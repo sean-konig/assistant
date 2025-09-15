@@ -1,0 +1,151 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// First migration must enable pgvector:
+///   CREATE EXTENSION IF NOT EXISTS vector;
+
+model User {
+  /// Mirror of Supabase auth.users
+  id          String   @id             // UUID from auth.users.id
+  authUserId  String   @unique         // Supabase auth user id
+  email       String   @unique
+  name        String?                  // friendly display name
+  role        Role     @default(USER)
+
+  projects    Project[]
+  sources     Source[]
+  items       Item[]
+  embeddings  Embedding[]
+  riskScores  RiskScore[]
+  digests     Digest[]
+  reminders   Reminder[]
+  jobs        JobRun[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Project {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  slug      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, slug])
+  Item Item[]
+  RiskScore RiskScore[]
+}
+
+enum SourceType {
+  GMAIL
+  GOOGLE_CAL
+  SLACK
+  MANUAL_NOTE
+  TRAINING_MATERIAL
+}
+
+model Source {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      SourceType
+  label     String
+  config    Json
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  Item Item[]
+}
+
+enum ItemType {
+  EMAIL
+  CAL_EVENT
+  NOTE
+  DOC
+}
+
+model Item {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId  String?
+  project    Project?  @relation(fields: [projectId], references: [id])
+  sourceId   String?
+  source     Source?   @relation(fields: [sourceId], references: [id])
+  type       ItemType
+  title      String?
+  body       String?
+  raw        Json?
+  occurredAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  Embedding Embedding[]
+}
+
+model Embedding {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  itemId    String?
+  item      Item?    @relation(fields: [itemId], references: [id])
+  vector    Bytes    // alter to VECTOR(768) via SQL
+  dim       Int      @default(768)
+  createdAt DateTime @default(now())
+}
+
+model RiskScore {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId  String
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  score      Float
+  factors    Json
+  computedAt DateTime @default(now())
+}
+
+model Digest {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      DateTime
+  summary   String
+  createdAt DateTime @default(now())
+}
+
+model Reminder {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dueAt     DateTime
+  content   String
+  sentAt    DateTime?
+  createdAt DateTime @default(now())
+}
+
+model JobRun {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind       String
+  status     String
+  details    Json?
+  startedAt  DateTime @default(now())
+  finishedAt DateTime?
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
