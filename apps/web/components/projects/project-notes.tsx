@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button"
 import { Search, Plus } from "lucide-react"
 import { format } from "date-fns"
 import type { Note } from "@/lib/types"
+import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
 
 const tagColors = {
   risk: "bg-red-500",
@@ -100,8 +102,8 @@ export function ProjectNotes({ notes, projectCode }: ProjectNotesProps) {
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="pt-0">
-              <p className="text-sm leading-relaxed">{note.content}</p>
+            <CardContent className="pt-0 prose prose-invert max-w-none">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{note.content}</ReactMarkdown>
               {note.meetingId && <div className="mt-2 text-xs text-muted-foreground">Related to meeting</div>}
             </CardContent>
           </Card>

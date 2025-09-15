@@ -1,34 +1,45 @@
-"use client"
+"use client";
 
-import { use } from "react"
-import { Card, CardContent } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Progress } from "@/components/ui/progress"
-import { Calendar, FileText, CheckSquare, TrendingUp, Plus } from "lucide-react"
-import { useProject } from "@/lib/api/hooks"
-import { format } from "date-fns"
-import { ProjectOverview } from "@/components/projects/project-overview"
-import { ProjectTasks } from "@/components/projects/project-tasks"
-import { ProjectMeetings } from "@/components/projects/project-meetings"
-import { ProjectNotes } from "@/components/projects/project-notes"
+import { use, useState } from "react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Progress } from "@/components/ui/progress";
+import { Calendar, FileText, CheckSquare, TrendingUp, Plus } from "lucide-react";
+import { useProject, useCreateNote, useCreateTask, useProjectChat } from "@/lib/api/hooks";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { format } from "date-fns";
+import { ProjectOverview } from "@/components/projects/project-overview";
+import { ProjectTasks } from "@/components/projects/project-tasks";
+import { ProjectMeetings } from "@/components/projects/project-meetings";
+import { ProjectNotes } from "@/components/projects/project-notes";
 
 const statusColors = {
   ACTIVE: "bg-green-500",
   ON_HOLD: "bg-yellow-500",
   AT_RISK: "bg-red-500",
   ARCHIVED: "bg-gray-500",
-}
+};
 
 interface ProjectDetailPageProps {
-  params: Promise<{ code: string }>
+  params: Promise<{ code: string }>;
 }
 
 export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
-  const { code } = use(params)
-  const { data: project, isLoading } = useProject(code)
+  const { code } = use(params);
+  const { data: project, isLoading } = useProject(code);
+  const createNote = useCreateNote(code);
+  const createTask = useCreateTask(code);
+  const chat = useProjectChat(code);
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [md, setMd] = useState("");
+  const [summary, setSummary] = useState("");
+  const [noteType, setNoteType] = useState("GENERAL");
 
   if (isLoading) {
     return (
@@ -39,7 +50,7 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
         </div>
         <div className="h-96 bg-muted rounded animate-pulse"></div>
       </div>
-    )
+    );
   }
 
   if (!project) {
@@ -48,7 +59,7 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
         <h1 className="text-2xl font-bold mb-2">Project Not Found</h1>
         <p className="text-muted-foreground">The project with code "{code}" could not be found.</p>
       </div>
-    )
+    );
   }
 
   return (
@@ -81,14 +92,86 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
         </div>
 
         <div className="flex gap-2">
-          <Button variant="outline" size="sm">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={async () => {
+              const title = window.prompt("Task title?");
+              if (!title) return;
+              await createTask.mutateAsync({ title, status: "OPEN", priority: 1 });
+            }}
+          >
             <Plus className="h-4 w-4 mr-2" />
             Add Task
           </Button>
-          <Button variant="outline" size="sm">
-            <Plus className="h-4 w-4 mr-2" />
-            Add Note
-          </Button>
+          <Dialog open={noteOpen} onOpenChange={setNoteOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Note
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[700px]">
+              <DialogHeader>
+                <DialogTitle>Add Project Note (Markdown)</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <Label>Note Type</Label>
+                  <Select value={noteType} onValueChange={setNoteType}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="GENERAL">General</SelectItem>
+                      <SelectItem value="MEETING">Meeting</SelectItem>
+                      <SelectItem value="ONE_ON_ONE">1:1</SelectItem>
+                      <SelectItem value="DAILY">Daily</SelectItem>
+                      <SelectItem value="OTHER">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label>Markdown</Label>
+                  <Textarea
+                    rows={10}
+                    value={md}
+                    onChange={(e) => setMd(e.target.value)}
+                    placeholder="# Title\n\nNotes..."
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Summary (optional, Markdown)</Label>
+                  <Textarea
+                    rows={4}
+                    value={summary}
+                    onChange={(e) => setSummary(e.target.value)}
+                    placeholder="- Key point 1\n- Key point 2"
+                  />
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setNoteOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={async () => {
+                      if (!md.trim()) return;
+                      await createNote.mutateAsync({
+                        markdown: md.trim(),
+                        summaryMarkdown: summary || undefined,
+                        noteType,
+                      });
+                      setMd("");
+                      setSummary("");
+                      setNoteOpen(false);
+                    }}
+                  >
+                    Save Note
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
@@ -167,6 +250,44 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
           <ProjectNotes notes={project.notes || []} projectCode={project.code} />
         </TabsContent>
       </Tabs>
+
+      {/* Project-specific Agent Chat */}
+      <div className="mt-6">
+        <h2 className="text-lg font-semibold mb-2">Project Chat</h2>
+        <p className="text-xs text-muted-foreground mb-2">This chat talks to the project-specific agent.</p>
+        {project?.chat && project.chat.length > 0 && (
+          <div className="mb-3 space-y-2 max-h-60 overflow-auto rounded border p-3 text-sm">
+            {project.chat.map((m: any) => (
+              <div key={m.id} className={`flex ${m.role === "assistant" ? "justify-start" : "justify-end"}`}>
+                <div
+                  className={`px-3 py-2 rounded ${m.role === "assistant" ? "bg-muted" : "bg-primary text-primary-foreground"}`}
+                >
+                  {m.content}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex gap-2">
+          <input
+            id="chat-input"
+            className="flex-1 bg-background border rounded px-3 py-2 text-sm"
+            placeholder="Ask about this project..."
+          />
+          <Button
+            size="sm"
+            onClick={async () => {
+              const el = document.getElementById("chat-input") as HTMLInputElement | null;
+              if (!el || !el.value.trim()) return;
+              const msg = el.value.trim();
+              el.value = "";
+              await chat.mutateAsync(msg);
+            }}
+          >
+            Send
+          </Button>
+        </div>
+      </div>
     </div>
-  )
+  );
 }
