@@ -8,9 +8,10 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Search, Grid, List, ExternalLink } from "lucide-react"
-import { useProjects } from "@/api/hooks"
+import { useProjects } from "@/lib/api/hooks"
 import { format } from "date-fns"
 import Link from "next/link"
+import { useProjectStore } from "@/lib/state/project.store"
 import type { ProjectStatus } from "@/lib/types"
 
 const statusColors = {
@@ -22,6 +23,7 @@ const statusColors = {
 
 export default function ProjectsPage() {
   const { data: projects = [], isLoading } = useProjects()
+  const setProject = useProjectStore((s) => s.set)
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | "ALL">("ALL")
   const [riskThreshold, setRiskThreshold] = useState(0)
@@ -138,7 +140,7 @@ export default function ProjectsPage() {
                       </Badge>
                     </div>
                   </div>
-                  <Button variant="ghost" size="sm" asChild>
+                  <Button variant="ghost" size="sm" asChild onClick={() => setProject(project.code)}>
                     <Link href={`/projects/${project.code}`}>
                       <ExternalLink className="h-4 w-4" />
                     </Link>
@@ -215,7 +217,7 @@ export default function ProjectsPage() {
                     </div>
                   </div>
 
-                  <Button variant="ghost" size="sm" asChild>
+                  <Button variant="ghost" size="sm" asChild onClick={() => setProject(project.code)}>
                     <Link href={`/projects/${project.code}`}>
                       <ExternalLink className="h-4 w-4" />
                     </Link>

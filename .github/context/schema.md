@@ -1,0 +1,160 @@
+### DATABASE SCHEMA V1
+
+```sql
+model User {
+  /// Mirror of Supabase auth.users
+  id          String   @id             // UUID from auth.users.id
+  authUserId  String   @unique         // Supabase auth user id
+  email       String   @unique
+  name        String?                  // friendly display name
+  role        Role     @default(USER)
+
+  projects    Project[]
+  sources     Source[]
+  items       Item[]
+  embeddings  Embedding[]
+  riskScores  RiskScore[]
+  digests     Digest[]
+  reminders   Reminder[]
+  jobs        JobRun[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("users")
+}
+
+model Project {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  slug      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, slug])
+  Item Item[]
+  RiskScore RiskScore[]
+
+  @@map("projects")
+}
+
+enum SourceType {
+  GMAIL
+  GOOGLE_CAL
+  SLACK
+  MANUAL_NOTE
+  TRAINING_MATERIAL
+}
+
+model Source {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      SourceType
+  label     String
+  config    Json
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  Item Item[]
+
+  @@map("sources")
+}
+
+enum ItemType {
+  EMAIL
+  CAL_EVENT
+  NOTE
+  DOC
+}
+
+model Item {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId  String?
+  project    Project?  @relation(fields: [projectId], references: [id])
+  sourceId   String?
+  source     Source?   @relation(fields: [sourceId], references: [id])
+  type       ItemType
+  title      String?
+  body       String?
+  raw        Json?
+  occurredAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  Embedding Embedding[]
+
+  @@map("items")
+}
+
+model Embedding {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  itemId    String?
+  item      Item?    @relation(fields: [itemId], references: [id])
+  vector    Unsupported("vector(768)")
+  dim       Int      @default(768)
+  createdAt DateTime @default(now())
+
+  @@map("embeddings")
+}
+
+model RiskScore {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId  String
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  score      Float
+  factors    Json
+  computedAt DateTime @default(now())
+
+  @@map("risk_scores")
+}
+
+model Digest {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      DateTime
+  summary   String
+  createdAt DateTime @default(now())
+
+  @@map("digests")
+}
+
+model Reminder {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dueAt     DateTime
+  content   String
+  sentAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@map("reminders")
+}
+
+model JobRun {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind       String
+  status     String
+  details    Json?
+  startedAt  DateTime @default(now())
+  finishedAt DateTime?
+
+  @@map("job_runs")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+```

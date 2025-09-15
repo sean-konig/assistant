@@ -14,7 +14,14 @@ async function bootstrap() {
   const config = app.get(ConfigService);
 
   await app.register(helmet);
-  await app.register(cors, { origin: true, credentials: true });
+  const allowed = [
+    process.env.APP_PUBLIC_URL ?? 'http://localhost:3000',
+    'http://127.0.0.1:3000',
+  ];
+  await app.register(cors, {
+    origin: allowed,
+    credentials: true,
+  });
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
   app.useGlobalInterceptors(new RequestLoggerInterceptor());
