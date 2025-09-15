@@ -1,0 +1,2 @@
+# This file helps Prisma determine migration engine settings.
+provider = "postgresql"

@@ -5,6 +5,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 /// First migration must enable pgvector:
@@ -29,6 +30,8 @@ model User {
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@map("users")
 }
 
 model Project {
@@ -43,6 +46,8 @@ model Project {
   @@unique([userId, slug])
   Item Item[]
   RiskScore RiskScore[]
+
+  @@map("projects")
 }
 
 enum SourceType {
@@ -64,6 +69,8 @@ model Source {
   updatedAt DateTime  @updatedAt
 
   Item Item[]
+
+  @@map("sources")
 }
 
 enum ItemType {
@@ -90,6 +97,8 @@ model Item {
   updatedAt  DateTime  @updatedAt
 
   Embedding Embedding[]
+
+  @@map("items")
 }
 
 model Embedding {
@@ -98,9 +107,11 @@ model Embedding {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   itemId    String?
   item      Item?    @relation(fields: [itemId], references: [id])
-  vector    Bytes    // alter to VECTOR(768) via SQL
+  vector    Unsupported("vector(768)")
   dim       Int      @default(768)
   createdAt DateTime @default(now())
+
+  @@map("embeddings")
 }
 
 model RiskScore {
@@ -112,6 +123,8 @@ model RiskScore {
   score      Float
   factors    Json
   computedAt DateTime @default(now())
+
+  @@map("risk_scores")
 }
 
 model Digest {
@@ -121,6 +134,8 @@ model Digest {
   date      DateTime
   summary   String
   createdAt DateTime @default(now())
+
+  @@map("digests")
 }
 
 model Reminder {
@@ -131,6 +146,8 @@ model Reminder {
   content   String
   sentAt    DateTime?
   createdAt DateTime @default(now())
+
+  @@map("reminders")
 }
 
 model JobRun {
@@ -142,6 +159,8 @@ model JobRun {
   details    Json?
   startedAt  DateTime @default(now())
   finishedAt DateTime?
+
+  @@map("job_runs")
 }
 
 enum Role {
