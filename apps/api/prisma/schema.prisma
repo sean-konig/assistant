@@ -47,6 +47,7 @@ model Project {
   @@unique([userId, slug])
   Item Item[]
   RiskScore RiskScore[]
+  Embedding Embedding[]
 
   @@map("projects")
 }
@@ -106,10 +107,12 @@ model Embedding {
   id        String   @id @default(cuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id])
   itemId    String?
   item      Item?    @relation(fields: [itemId], references: [id])
-  vector    Unsupported("vector(768)")
-  dim       Int      @default(768)
+  vector    Unsupported("vector(1536)")
+  dim       Int      @default(1536)
   createdAt DateTime @default(now())
 
   @@map("embeddings")

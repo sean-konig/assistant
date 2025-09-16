@@ -1,13 +1,14 @@
-import { Module } from '@nestjs/common'
-import { EmbeddingsService } from './embeddings.service'
-import { EmbeddingsController } from './embeddings.controller'
-import { LlmModule } from '../llm/openai.module'
-import { EmbeddingPipeline } from './embedding.pipeline'
+import { Module } from "@nestjs/common";
+import { EmbeddingsController } from "./embeddings.controller";
+import { EmbeddingsService } from "./embeddings.service";
+import { EmbeddingPipeline } from "./embedding.pipeline";
+import { PrismaModule } from "../prisma/prisma.module";
+import { LlmModule } from "../llm/openai.module";
 
 @Module({
-  imports: [LlmModule],
+  imports: [PrismaModule, LlmModule],
   controllers: [EmbeddingsController],
   providers: [EmbeddingsService, EmbeddingPipeline],
-  exports: [EmbeddingsService, EmbeddingPipeline],
+  exports: [EmbeddingsService, EmbeddingPipeline], // Export both for other modules
 })
 export class EmbeddingsModule {}
