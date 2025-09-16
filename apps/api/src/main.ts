@@ -14,13 +14,19 @@ async function bootstrap() {
   const config = app.get(ConfigService);
 
   await app.register(helmet);
-  const allowed = [
-    process.env.APP_PUBLIC_URL ?? 'http://localhost:3000',
-    'http://127.0.0.1:3000',
-  ];
+  const allowed = [process.env.APP_PUBLIC_URL ?? "http://localhost:3000", "http://127.0.0.1:3000"];
   await app.register(cors, {
-    origin: allowed,
+    origin: (origin, cb) => {
+      // Allow no-origin (curl, server-to-server) and allowed list
+      if (!origin || allowed.includes(origin)) {
+        cb(null, true);
+        return;
+      }
+      cb(new Error("Not allowed by CORS"), false);
+    },
     credentials: true,
+    allowedHeaders: ["Content-Type", "Authorization", "Accept", "Last-Event-ID"],
+    methods: ["GET", "POST", "OPTIONS"],
   });
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));

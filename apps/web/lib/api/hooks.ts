@@ -1,14 +1,14 @@
-'use client';
+"use client";
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
-import { ProjectsApi } from './projects';
-import type { CreateProjectReq } from '@repo/types';
-import type { Project as UiProject, Task, Meeting, Note } from '@/lib/types';
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
+import { ProjectsApi } from "./projects";
+import type { CreateProjectReq } from "@repo/types";
+import type { Project as UiProject, Task, Meeting, Note } from "@/lib/types";
 
 export function useProjects() {
   return useQuery({
-    queryKey: ['projects'],
+    queryKey: ["projects"],
     queryFn: ProjectsApi.list,
   });
 }
@@ -18,7 +18,7 @@ export function useCreateProject() {
   return useMutation({
     mutationFn: (payload: CreateProjectReq) => ProjectsApi.create(payload),
     onSuccess: (created) => {
-      qc.setQueryData(['projects'], (prev: any) => {
+      qc.setQueryData(["projects"], (prev: any) => {
         const list = Array.isArray(prev) ? prev : [];
         return [created, ...list.filter((p: any) => p.id !== created.id)];
       });
@@ -28,7 +28,7 @@ export function useCreateProject() {
 
 export function useProject(code?: string) {
   return useQuery({
-    queryKey: ['project', code],
+    queryKey: ["project", code],
     enabled: Boolean(code),
     queryFn: async () => {
       const p = await ProjectsApi.getWithDetails(code!);
@@ -46,10 +46,16 @@ export function useProject(code?: string) {
 export function useCreateNote(code: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (payload: { markdown: string; summaryMarkdown?: string; tags?: string[]; authorEmail?: string; vector?: number[]; dim?: number }) =>
-      ProjectsApi.addNote(code, payload),
+    mutationFn: (payload: {
+      markdown: string;
+      summaryMarkdown?: string;
+      tags?: string[];
+      authorEmail?: string;
+      vector?: number[];
+      dim?: number;
+    }) => ProjectsApi.addNote(code, payload),
     onSuccess: (note) => {
-      qc.setQueryData(['project', code], (prev: any) => {
+      qc.setQueryData(["project", code], (prev: any) => {
         if (!prev) return prev;
         return { ...prev, notes: [note, ...(prev.notes ?? [])] };
       });
@@ -60,10 +66,15 @@ export function useCreateNote(code: string) {
 export function useCreateTask(code: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (payload: { title: string; status: 'OPEN' | 'IN_PROGRESS' | 'BLOCKED' | 'DONE'; priority: number; dueDate?: string | null; source?: 'MANUAL' | 'EMAIL' | 'MEETING' }) =>
-      ProjectsApi.addTask(code, payload),
+    mutationFn: (payload: {
+      title: string;
+      status: "OPEN" | "IN_PROGRESS" | "BLOCKED" | "DONE";
+      priority: number;
+      dueDate?: string | null;
+      source?: "MANUAL" | "EMAIL" | "MEETING";
+    }) => ProjectsApi.addTask(code, payload),
     onSuccess: (task) => {
-      qc.setQueryData(['project', code], (prev: any) => {
+      qc.setQueryData(["project", code], (prev: any) => {
         if (!prev) return prev;
         return { ...prev, tasks: [task, ...(prev.tasks ?? [])] };
       });
@@ -77,7 +88,7 @@ export function useProjectChat(code: string) {
     mutationFn: (message: string) => ProjectsApi.chat(code, message),
     onSuccess: () => {
       // could refetch or update chat log later
-      qc.invalidateQueries({ queryKey: ['project', code] });
+      qc.invalidateQueries({ queryKey: ["project", code] });
     },
   });
 }
@@ -85,79 +96,80 @@ export function useProjectChat(code: string) {
 export function useProjectChatStream(code: string) {
   const qc = useQueryClient();
   const [isStreaming, setStreaming] = useState(false);
-  const [reply, setReply] = useState('');
+  const [reply, setReply] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
+  const esRef = useRef<EventSource | null>(null);
 
-  useEffect(() => () => { abortRef.current?.abort(); }, []);
+  useEffect(
+    () => () => {
+      esRef.current?.close();
+    },
+    []
+  );
 
   async function send(message: string): Promise<string> {
     setError(null);
-    setReply('');
+    setReply("");
     setStreaming(true);
-    try {
-      const base = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3002';
-      const ts = Date.now();
-      const url = `${base}/projects/${encodeURIComponent(code)}/chat/stream?message=${encodeURIComponent(message)}&t=${ts}`;
-      const controller = new AbortController();
-      abortRef.current = controller;
-      const res = await fetch(url, {
-        method: 'GET',
-        credentials: 'omit',
-        headers: { Accept: 'text/event-stream' },
-        signal: controller.signal,
-        mode: 'cors',
-        cache: 'no-store',
-      });
-      if (!res.ok || !res.body) throw new Error('stream failed to start');
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let full = '';
-      let buf = '';
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        // split on double newlines into events
-        const parts = buf.split(/\n\n/);
-        buf = parts.pop() || '';
-        for (const chunk of parts) {
-          // ignore comments
-          const line = chunk.split('\n').find((l) => l.startsWith('data:'));
-          if (!line) continue;
-          const payload = line.replace(/^data:\s?/, '');
+
+    // Wrap the stream lifecycle in a Promise so callers can await the final text.
+    return new Promise<string>((resolve) => {
+      try {
+        const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3002";
+        const url =
+          `${base}/projects/${encodeURIComponent(code)}/chat/stream` +
+          `?message=${encodeURIComponent(message)}&t=${Date.now()}`;
+
+        // Ensure only one open stream
+        esRef.current?.close();
+        const es = new EventSource(url);
+        esRef.current = es;
+
+        let full = "";
+
+        es.onmessage = (evt) => {
           try {
-            const data = JSON.parse(payload);
+            const data = JSON.parse(evt.data);
             if (data.token) {
-              setReply((r) => r + data.token);
-              full += data.token as string;
+              const t = String(data.token);
+              setReply((r) => r + t);
+              full += t;
             }
-            if (data.error) {
-              setError(String(data.error));
-            }
-            if (data.done) {
+            if (data.done || data.error) {
+              es.close();
+              esRef.current = null;
               setStreaming(false);
-              qc.invalidateQueries({ queryKey: ['project', code] });
+              if (data.error) setError(String(data.error));
+              // Trigger any consumers (e.g., to refresh project details)
+              qc.invalidateQueries({ queryKey: ["project", code] });
+              resolve(full);
             }
           } catch {
-            // ignore malformed lines
+            // ignore malformed chunk
           }
-        }
+        };
+
+        es.onerror = () => {
+          setError("stream error");
+          es.close();
+          esRef.current = null;
+          setStreaming(false);
+          qc.invalidateQueries({ queryKey: ["project", code] });
+          resolve(full); // resolve with whatever we have so far
+        };
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : "failed to start stream";
+        setError(msg);
+        setStreaming(false);
+        qc.invalidateQueries({ queryKey: ["project", code] });
+        resolve("");
       }
-      setStreaming(false);
-      const final = full;
-      setReply('');
-      qc.invalidateQueries({ queryKey: ['project', code] });
-      return final;
-    } catch (e: any) {
-      setError(e?.message || 'failed to start stream');
-      setStreaming(false);
-      return '';
-    }
+    });
   }
 
   function cancel() {
-    abortRef.current?.abort();
+    esRef.current?.close();
+    esRef.current = null;
     setStreaming(false);
   }
 
@@ -165,18 +177,23 @@ export function useProjectChatStream(code: string) {
 }
 export function useCoreChatStream() {
   const [isStreaming, setStreaming] = useState(false);
-  const [reply, setReply] = useState('');
+  const [reply, setReply] = useState("");
   const [error, setError] = useState<string | null>(null);
   const esRef = useRef<EventSource | null>(null);
 
-  useEffect(() => () => { esRef.current?.close(); }, []);
+  useEffect(
+    () => () => {
+      esRef.current?.close();
+    },
+    []
+  );
 
   async function send(message: string) {
     setError(null);
-    setReply('');
+    setReply("");
     setStreaming(true);
     try {
-      const base = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3002';
+      const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3002";
       const url = `${base}/core/chat/stream?message=${encodeURIComponent(message)}&t=${Date.now()}`;
       esRef.current?.close();
       const es = new EventSource(url);
@@ -193,12 +210,13 @@ export function useCoreChatStream() {
         } catch {}
       };
       es.onerror = () => {
-        setError('stream error');
+        setError("stream error");
         es.close();
         setStreaming(false);
       };
-    } catch (e: any) {
-      setError(e?.message || 'failed to start stream');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "failed to start stream";
+      setError(msg);
       setStreaming(false);
     }
   }

@@ -66,6 +66,8 @@ export class ProjectAgent {
     let top: any[] = [];
     try {
       const vectors = await this.llm.embed([query]);
+      console.log("I got query:", query);
+      console.log("Vectors:", vectors);
       const qvec = vectors?.[0];
       if (qvec && qvec.length) {
         const qstr = `[${qvec.join(",")}]`;
