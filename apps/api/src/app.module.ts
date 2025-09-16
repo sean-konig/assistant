@@ -9,6 +9,7 @@ import { ProjectsModule } from "./projects/projects.module";
 import { SourcesModule } from "./sources/sources.module";
 import { ItemsModule } from "./items/items.module";
 import { EmbeddingsModule } from "./embeddings/embeddings.module";
+import { AgentsModule } from "./agents/agents.module";
 import { RisksModule } from "./risks/risks.module";
 import { DigestsModule } from "./digests/digests.module";
 import { RemindersModule } from "./reminders/reminders.module";
@@ -35,6 +36,7 @@ import { JobsModule } from "./jobs/jobs.module";
     SourcesModule,
     ItemsModule,
     EmbeddingsModule,
+    AgentsModule,
     RisksModule,
     DigestsModule,
     RemindersModule,

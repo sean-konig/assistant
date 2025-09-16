@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
 import { Calendar, FileText, CheckSquare, TrendingUp, Plus } from "lucide-react";
-import { useProject, useCreateNote, useCreateTask, useProjectChat } from "@/lib/api/hooks";
+import { useProject, useCreateNote, useCreateTask, useProjectChatStream } from "@/lib/api/hooks";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -35,7 +35,7 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
   const { data: project, isLoading } = useProject(code);
   const createNote = useCreateNote(code);
   const createTask = useCreateTask(code);
-  const chat = useProjectChat(code);
+  const chat = useProjectChatStream(code);
   const [noteOpen, setNoteOpen] = useState(false);
   const [md, setMd] = useState("");
   const [summary, setSummary] = useState("");
@@ -255,7 +255,7 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
       <div className="mt-6">
         <h2 className="text-lg font-semibold mb-2">Project Chat</h2>
         <p className="text-xs text-muted-foreground mb-2">This chat talks to the project-specific agent.</p>
-        {project?.chat && project.chat.length > 0 && (
+        {(project?.chat && project.chat.length > 0) || chat.reply ? (
           <div className="mb-3 space-y-2 max-h-60 overflow-auto rounded border p-3 text-sm">
             {project.chat.map((m: any) => (
               <div key={m.id} className={`flex ${m.role === "assistant" ? "justify-start" : "justify-end"}`}>
@@ -266,26 +266,26 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
                 </div>
               </div>
             ))}
+            {chat.reply && (
+              <div className="flex justify-start">
+                <div className="px-3 py-2 rounded bg-muted">{chat.reply}</div>
+              </div>
+            )}
           </div>
-        )}
+        ) : null}
         <div className="flex gap-2">
           <input
             id="chat-input"
             className="flex-1 bg-background border rounded px-3 py-2 text-sm"
             placeholder="Ask about this project..."
           />
-          <Button
-            size="sm"
-            onClick={async () => {
-              const el = document.getElementById("chat-input") as HTMLInputElement | null;
-              if (!el || !el.value.trim()) return;
-              const msg = el.value.trim();
-              el.value = "";
-              await chat.mutateAsync(msg);
-            }}
-          >
-            Send
-          </Button>
+          <Button size="sm" onClick={async () => {
+            const el = document.getElementById("chat-input") as HTMLInputElement | null;
+            if (!el || !el.value.trim()) return;
+            const msg = el.value.trim();
+            el.value = "";
+            await chat.send(msg);
+          }}>{chat.isStreaming ? 'Streaming…' : 'Send'}</Button>
         </div>
       </div>
     </div>

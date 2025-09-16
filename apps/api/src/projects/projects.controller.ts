@@ -1,8 +1,11 @@
-import { Body, Controller, Get, Inject, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Param, Post, Query, Res } from "@nestjs/common";
 import { ApiTags } from "@nestjs/swagger";
 import { ProjectsService } from "./projects.service";
 import type { CreateProjectReq, Project } from "@repo/types";
 import { EmbeddingsService } from "../embeddings/embeddings.service";
+import { ProjectAgent } from "../agents/project-agent.service";
+import { OpenAiService } from "../llm/openai.service";
+import { PrismaService } from "../prisma/prisma.service";
 
 @ApiTags("projects")
 @Controller("projects")
@@ -10,6 +13,9 @@ export class ProjectsController {
   constructor(
     @Inject(ProjectsService) private readonly projects: ProjectsService,
     @Inject(EmbeddingsService) private readonly embeddings: EmbeddingsService,
+    @Inject(ProjectAgent) private readonly agent: ProjectAgent,
+    @Inject(OpenAiService) private readonly llm: OpenAiService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
   ) {}
 
   @Post()
@@ -86,8 +92,76 @@ export class ProjectsController {
   async chat(@Param("code") code: string, @Body() payload: { message: string }) {
     const project = await this.projects.getLocalBySlug(code);
     await this.projects.appendChatMessage(project.userId, project.id, { role: "user", content: payload.message });
-    const reply = `Project-specific agent (stub): I received your message about ${code}.`;
-    await this.projects.appendChatMessage(project.userId, project.id, { role: "assistant", content: reply });
-    return { reply };
+    const qa = await this.agent.qa(project.id, payload.message);
+    await this.projects.appendChatMessage(project.userId, project.id, { role: "assistant", content: qa.answerMarkdown });
+    return { reply: qa.answerMarkdown };
+  }
+
+  @Get(":code/chat/stream")
+  async chatStream(
+    @Param("code") code: string,
+    @Query("message") message: string,
+    @Res() res: any,
+  ) {
+    // Setup SSE headers
+    res.header('Content-Type', 'text/event-stream');
+    res.header('Cache-Control', 'no-cache, no-transform');
+    res.header('Connection', 'keep-alive');
+    res.header('X-Accel-Buffering', 'no');
+
+    const write = (data: any) => res.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+
+    try {
+      const project = await this.projects.getLocalBySlug(code);
+      await this.projects.appendChatMessage(project.userId, project.id, { role: 'user', content: message });
+
+      // Build retrieval context (best-effort)
+      let context = '';
+      try {
+        const vectors = await this.llm.embed([message]);
+        const qvec = vectors?.[0];
+        const qstr = qvec && qvec.length ? `[${qvec.join(',')}]` : null;
+        const top = qstr ? ((await this.prisma.$queryRawUnsafe(
+          'SELECT i.body, i.raw FROM embeddings e JOIN items i ON i.id = e."itemId" WHERE i."projectId" = $1 ORDER BY e.vector <-> $2::vector LIMIT 6',
+          project.id,
+          qstr,
+        )) as any[]) : [];
+        context = top.length ? top.map((t) => `- ${t.body || t.raw?.markdown || ''}`).join('\n') : '';
+      } catch {
+        context = '';
+      }
+
+      const system = 'You are the project-specific agent. Answer using only the provided context when relevant. Be concise.';
+      const user = context ? `Question: ${message}\n\nContext:\n${context}` : message;
+
+      let full = '';
+      await this.llm.streamChatMarkdown(system, user, (delta) => {
+        full += delta;
+        write({ token: delta });
+      });
+
+      await this.projects.appendChatMessage(project.userId, project.id, { role: 'assistant', content: full });
+      write({ done: true });
+    } catch (e: any) {
+      write({ error: e?.message || 'stream failed' });
+    } finally {
+      res.raw.end();
+    }
+  }
+
+  @Post(":code/agent/summarize-latest-notes")
+  async summarizeLatest(@Param("code") code: string) {
+    const project = await this.projects.getLocalBySlug(code);
+    const latest = await this.projects.getLatestNoteId(project.id);
+    if (!latest) return { ok: true, summarized: 0 };
+    const res = await this.agent.summarizeNote(latest);
+    return { ok: true, summarized: 1, ...res };
+  }
+
+  @Post(":code/agent/compute-risk")
+  async computeRisk(@Param("code") code: string) {
+    const project = await this.projects.getLocalBySlug(code);
+    const row = await this.agent.computeRisk(project.id);
+    return row;
   }
 }

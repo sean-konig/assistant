@@ -86,6 +86,17 @@ export class ProjectsService {
     return { notes, tasks, meetings, chat };
   }
 
+  async getLatestNoteId(projectId: string): Promise<string | null> {
+    const row = (await this.prisma.$queryRawUnsafe(
+      'SELECT id, raw FROM items WHERE "projectId" = $1 AND type = $2 ORDER BY "createdAt" DESC LIMIT 1',
+      projectId,
+      'NOTE',
+    )) as any[];
+    if (!row[0]) return null;
+    if (row[0].raw?.kind === 'NOTE') return row[0].id as string;
+    return null;
+  }
+
   async createNote(
     userId: string,
     projectId: string,

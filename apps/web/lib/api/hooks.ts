@@ -1,6 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useRef, useState } from 'react';
 import { ProjectsApi } from './projects';
 import type { CreateProjectReq } from '@repo/types';
 import type { Project as UiProject, Task, Meeting, Note } from '@/lib/types';
@@ -79,4 +80,57 @@ export function useProjectChat(code: string) {
       qc.invalidateQueries({ queryKey: ['project', code] });
     },
   });
+}
+
+export function useProjectChatStream(code: string) {
+  const qc = useQueryClient();
+  const [isStreaming, setStreaming] = useState(false);
+  const [reply, setReply] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const esRef = useRef<EventSource | null>(null);
+
+  useEffect(() => () => { esRef.current?.close(); }, []);
+
+  async function send(message: string) {
+    setError(null);
+    setReply('');
+    setStreaming(true);
+    try {
+      const base = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3002';
+      const url = `${base}/projects/${encodeURIComponent(code)}/chat/stream?message=${encodeURIComponent(message)}`;
+      const es = new EventSource(url);
+      esRef.current = es;
+      es.onmessage = (evt) => {
+        try {
+          const data = JSON.parse(evt.data);
+          if (data.token) setReply((r) => r + data.token);
+          if (data.done) {
+            es.close();
+            setStreaming(false);
+            qc.invalidateQueries({ queryKey: ['project', code] });
+          }
+          if (data.error) {
+            setError(data.error);
+            es.close();
+            setStreaming(false);
+          }
+        } catch {}
+      };
+      es.onerror = () => {
+        setError('stream error');
+        es.close();
+        setStreaming(false);
+      };
+    } catch (e: any) {
+      setError(e?.message || 'failed to start stream');
+      setStreaming(false);
+    }
+  }
+
+  function cancel() {
+    esRef.current?.close();
+    setStreaming(false);
+  }
+
+  return { send, cancel, isStreaming, reply, error };
 }
