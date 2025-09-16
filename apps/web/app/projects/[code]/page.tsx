@@ -1,6 +1,9 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useEffect, useMemo, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { Send } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,6 +21,7 @@ import { ProjectOverview } from "@/components/projects/project-overview";
 import { ProjectTasks } from "@/components/projects/project-tasks";
 import { ProjectMeetings } from "@/components/projects/project-meetings";
 import { ProjectNotes } from "@/components/projects/project-notes";
+import { ChatPanel, type ChatMessage } from "@/components/chat/chat-panel";
 
 const statusColors = {
   ACTIVE: "bg-green-500",
@@ -40,6 +44,22 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
   const [md, setMd] = useState("");
   const [summary, setSummary] = useState("");
   const [noteType, setNoteType] = useState("GENERAL");
+  const [messages, setMessages] = useState<Array<{ id?: string; role: 'user'|'assistant'; content: string; createdAt?: string }>>([]);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  // Sync server messages into local thread
+  useEffect(() => {
+    if (project?.chat) {
+      setMessages(project.chat.map((m: any) => ({ id: m.id, role: m.role, content: m.content, createdAt: m.createdAt })));
+    }
+  }, [project?.chat]);
+
+  // Auto-scroll on new tokens or message
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+  }, [messages.length, chat.reply]);
+
+  const canSend = useMemo(() => !chat.isStreaming, [chat.isStreaming]);
 
   if (isLoading) {
     return (
@@ -252,42 +272,19 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
       </Tabs>
 
       {/* Project-specific Agent Chat */}
-      <div className="mt-6">
-        <h2 className="text-lg font-semibold mb-2">Project Chat</h2>
-        <p className="text-xs text-muted-foreground mb-2">This chat talks to the project-specific agent.</p>
-        {(project?.chat && project.chat.length > 0) || chat.reply ? (
-          <div className="mb-3 space-y-2 max-h-60 overflow-auto rounded border p-3 text-sm">
-            {project.chat.map((m: any) => (
-              <div key={m.id} className={`flex ${m.role === "assistant" ? "justify-start" : "justify-end"}`}>
-                <div
-                  className={`px-3 py-2 rounded ${m.role === "assistant" ? "bg-muted" : "bg-primary text-primary-foreground"}`}
-                >
-                  {m.content}
-                </div>
-              </div>
-            ))}
-            {chat.reply && (
-              <div className="flex justify-start">
-                <div className="px-3 py-2 rounded bg-muted">{chat.reply}</div>
-              </div>
-            )}
-          </div>
-        ) : null}
-        <div className="flex gap-2">
-          <input
-            id="chat-input"
-            className="flex-1 bg-background border rounded px-3 py-2 text-sm"
-            placeholder="Ask about this project..."
-          />
-          <Button size="sm" onClick={async () => {
-            const el = document.getElementById("chat-input") as HTMLInputElement | null;
-            if (!el || !el.value.trim()) return;
-            const msg = el.value.trim();
-            el.value = "";
-            await chat.send(msg);
-          }}>{chat.isStreaming ? 'Streaming…' : 'Send'}</Button>
-        </div>
-      </div>
+      <ChatPanel
+        title="Project Chat"
+        subtitle="This chat talks to the project-specific agent."
+        messages={messages as ChatMessage[]}
+        streaming={chat.isStreaming}
+        streamText={chat.reply}
+        onSend={async (text) => {
+          setMessages((prev) => [...prev, { role: 'user', content: text }]);
+          const final = await chat.send(text);
+          setMessages((prev) => [...prev, { role: 'assistant', content: final }]);
+        }}
+        onStop={() => chat.cancel()}
+      />
     </div>
   );
 }

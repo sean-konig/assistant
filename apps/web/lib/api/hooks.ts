@@ -87,6 +87,86 @@ export function useProjectChatStream(code: string) {
   const [isStreaming, setStreaming] = useState(false);
   const [reply, setReply] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => () => { abortRef.current?.abort(); }, []);
+
+  async function send(message: string): Promise<string> {
+    setError(null);
+    setReply('');
+    setStreaming(true);
+    try {
+      const base = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3002';
+      const ts = Date.now();
+      const url = `${base}/projects/${encodeURIComponent(code)}/chat/stream?message=${encodeURIComponent(message)}&t=${ts}`;
+      const controller = new AbortController();
+      abortRef.current = controller;
+      const res = await fetch(url, {
+        method: 'GET',
+        credentials: 'omit',
+        headers: { Accept: 'text/event-stream' },
+        signal: controller.signal,
+        mode: 'cors',
+        cache: 'no-store',
+      });
+      if (!res.ok || !res.body) throw new Error('stream failed to start');
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let full = '';
+      let buf = '';
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        // split on double newlines into events
+        const parts = buf.split(/\n\n/);
+        buf = parts.pop() || '';
+        for (const chunk of parts) {
+          // ignore comments
+          const line = chunk.split('\n').find((l) => l.startsWith('data:'));
+          if (!line) continue;
+          const payload = line.replace(/^data:\s?/, '');
+          try {
+            const data = JSON.parse(payload);
+            if (data.token) {
+              setReply((r) => r + data.token);
+              full += data.token as string;
+            }
+            if (data.error) {
+              setError(String(data.error));
+            }
+            if (data.done) {
+              setStreaming(false);
+              qc.invalidateQueries({ queryKey: ['project', code] });
+            }
+          } catch {
+            // ignore malformed lines
+          }
+        }
+      }
+      setStreaming(false);
+      const final = full;
+      setReply('');
+      qc.invalidateQueries({ queryKey: ['project', code] });
+      return final;
+    } catch (e: any) {
+      setError(e?.message || 'failed to start stream');
+      setStreaming(false);
+      return '';
+    }
+  }
+
+  function cancel() {
+    abortRef.current?.abort();
+    setStreaming(false);
+  }
+
+  return { send, cancel, isStreaming, reply, error };
+}
+export function useCoreChatStream() {
+  const [isStreaming, setStreaming] = useState(false);
+  const [reply, setReply] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => () => { esRef.current?.close(); }, []);
@@ -97,22 +177,18 @@ export function useProjectChatStream(code: string) {
     setStreaming(true);
     try {
       const base = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3002';
-      const url = `${base}/projects/${encodeURIComponent(code)}/chat/stream?message=${encodeURIComponent(message)}`;
+      const url = `${base}/core/chat/stream?message=${encodeURIComponent(message)}&t=${Date.now()}`;
+      esRef.current?.close();
       const es = new EventSource(url);
       esRef.current = es;
       es.onmessage = (evt) => {
         try {
           const data = JSON.parse(evt.data);
           if (data.token) setReply((r) => r + data.token);
-          if (data.done) {
+          if (data.done || data.error) {
             es.close();
             setStreaming(false);
-            qc.invalidateQueries({ queryKey: ['project', code] });
-          }
-          if (data.error) {
-            setError(data.error);
-            es.close();
-            setStreaming(false);
+            if (data.error) setError(data.error);
           }
         } catch {}
       };
