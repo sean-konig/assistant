@@ -2,8 +2,11 @@ import { Body, Controller, Get, Inject, Param, Post, Query, Res, Req, BadRequest
 import { ApiTags } from "@nestjs/swagger";
 import { ProjectsService } from "./projects.service";
 import type { CreateProjectReq, Project } from "@repo/types";
-import { EmbeddingsService } from "../embeddings/embeddings.service";
 import { ProjectAgentService } from "../agents/project-agent.service";
+import { ProjectNotesService } from "./project-notes.service";
+import { ProjectTasksService } from "./project-tasks.service";
+import { ProjectChatService } from "./project-chat.service";
+import { ProjectDetailsService } from "./project-details.service";
 import { createSse } from "../common/http/sse";
 
 @ApiTags("projects")
@@ -11,8 +14,11 @@ import { createSse } from "../common/http/sse";
 export class ProjectsController {
   constructor(
     @Inject(ProjectsService) private readonly projects: ProjectsService,
-    @Inject(EmbeddingsService) private readonly embeddings: EmbeddingsService,
     @Inject(ProjectAgentService) private readonly projAgent: ProjectAgentService,
+    @Inject(ProjectNotesService) private readonly notes: ProjectNotesService,
+    @Inject(ProjectTasksService) private readonly tasks: ProjectTasksService,
+    @Inject(ProjectChatService) private readonly chatSvc: ProjectChatService,
+    @Inject(ProjectDetailsService) private readonly details: ProjectDetailsService,
   ) {}
 
   // Basic agent mode: no RAG helpers
@@ -39,7 +45,7 @@ export class ProjectsController {
   async get(@Param("code") code: string): Promise<any> {
     const row = await this.projects.getLocalBySlug(code);
     const base = this.projects.mapToProject(row);
-    const details = await this.projects.getProjectDetails(row.id);
+    const details = await this.details.getProjectDetails(row.id);
     return { ...base, ...details };
   }
 
@@ -80,16 +86,13 @@ export class ProjectsController {
     }
   ) {
     const project = await this.projects.getLocalBySlug(code);
-    const note = await this.projects.createNote(project.userId, project.id, {
+    const note = await this.notes.create(project.userId, project.id, {
       markdown: body.markdown,
       summaryMarkdown: body.summaryMarkdown ?? null,
       tags: body.tags ?? [],
       authorEmail: body.authorEmail ?? null,
       noteType: body.noteType ?? "GENERAL",
     });
-    if (body.vector && Array.isArray(body.vector)) {
-      await this.embeddings.indexVector(project.userId, note.id, body.vector, body.dim ?? body.vector.length);
-    }
     return note;
   }
 
@@ -106,18 +109,18 @@ export class ProjectsController {
     }
   ) {
     const project = await this.projects.getLocalBySlug(code);
-    return this.projects.createTask(project.userId, project.id, payload);
+    return this.tasks.create(project.userId, project.id, payload);
   }
 
   @Post(":code/chat")
   async chat(@Param("code") code: string, @Body() payload: { message: string }) {
     const project = await this.projects.getLocalBySlug(code);
-    await this.projects.appendChatMessage(project.userId, project.id, { role: "user", content: payload.message });
+    await this.chatSvc.appendMessage(project.userId, project.id, { role: "user", content: payload.message });
     const reply = await this.projAgent.replyOnce(
       { id: project.id, slug: project.slug, description: (project as any).description ?? null },
       payload.message,
     );
-    await this.projects.appendChatMessage(project.userId, project.id, { role: "assistant", content: reply });
+    await this.chatSvc.appendMessage(project.userId, project.id, { role: "assistant", content: reply });
     return { reply };
   }
 
@@ -132,8 +135,8 @@ export class ProjectsController {
       { id: project.id, slug: project.slug, description: (project as any).description ?? null },
       body.message,
     );
-    await this.projects.appendChatMessage(project.userId, project.id, { role: "user", content: body.message });
-    await this.projects.appendChatMessage(project.userId, project.id, { role: "assistant", content: reply });
+    await this.chatSvc.appendMessage(project.userId, project.id, { role: "user", content: body.message });
+    await this.chatSvc.appendMessage(project.userId, project.id, { role: "assistant", content: reply });
     return { reply };
   }
 
@@ -151,7 +154,7 @@ export class ProjectsController {
     const sse = createSse(res, req, { pingMs: 15000 });
     try {
       const project = await this.projects.getLocalBySlug(code);
-      await this.projects.appendChatMessage(project.userId, project.id, { role: "user", content: message });
+      await this.chatSvc.appendMessage(project.userId, project.id, { role: "user", content: message });
       let full = "";
       for await (const delta of this.projAgent.replyStream(
         { id: project.id, slug: project.slug, description: (project as any).description ?? null },
@@ -161,7 +164,7 @@ export class ProjectsController {
         sse.write({ token: delta });
       }
 
-      await this.projects.appendChatMessage(project.userId, project.id, { role: "assistant", content: full });
+      await this.chatSvc.appendMessage(project.userId, project.id, { role: "assistant", content: full });
       sse.write({ done: true });
     } catch (e: any) {
       sse.write({ error: e?.message || "stream failed" });
@@ -178,7 +181,7 @@ export class ProjectsController {
     const sse = createSse(res, req, { pingMs: 15000 });
     try {
       const project = await this.projects.getLocalBySlug(code);
-      await this.projects.appendChatMessage(project.userId, project.id, { role: "user", content: message });
+      await this.chatSvc.appendMessage(project.userId, project.id, { role: "user", content: message });
       let full = "";
       for await (const delta of this.projAgent.replyStream(
         { id: project.id, slug: project.slug, description: (project as any).description ?? null },
@@ -188,7 +191,7 @@ export class ProjectsController {
         sse.write({ token: delta });
       }
 
-      await this.projects.appendChatMessage(project.userId, project.id, { role: "assistant", content: full });
+      await this.chatSvc.appendMessage(project.userId, project.id, { role: "assistant", content: full });
       sse.write({ done: true });
     } catch (e: any) {
       sse.write({ error: e?.message || "stream failed" });
@@ -200,7 +203,7 @@ export class ProjectsController {
   @Post(":code/agent/summarize-latest-notes")
   async summarizeLatest(@Param("code") code: string) {
     const project = await this.projects.getLocalBySlug(code);
-    const latest = await this.projects.getLatestNoteId(project.id);
+    const latest = await this.notes.getLatestNoteId(project.id);
     if (!latest) return { ok: true, summarized: 0 };
     const res = await this.projAgent.summarizeNote(latest);
     return { ok: true, summarized: 1, ...res };
