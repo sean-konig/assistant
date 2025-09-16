@@ -53,6 +53,30 @@ export class ProjectAgentService {
     }
   }
 
+  // Build message sequence from recent turns + latest user message
+  private toMessageSequence(history: { role: "user" | "assistant"; content: string }[], latest: string) {
+    const seq: any[] = [];
+    for (const t of history) {
+      if (t.role === "user") seq.push(user(t.content));
+      else seq.push(a(t.content));
+    }
+    seq.push(user(latest));
+    return seq;
+  }
+
+  // STREAMING with history (no RAG)
+  async *replyStreamWithHistory(
+    project: ProjectLite,
+    latest: string,
+    history: { role: "user" | "assistant"; content: string }[],
+  ) {
+    const agent = this.createAgent(project);
+    const seq = this.toMessageSequence(history, latest);
+    const streamed = await run(agent, seq, { context: { projectId: project.id }, stream: true });
+    const textStream = streamed.toTextStream({ compatibleWithNodeStreams: true });
+    for await (const delta of textStream) yield String(delta);
+  }
+
   // No history/RAG variants in the basic agent
 
   // Utilities we keep from the old service

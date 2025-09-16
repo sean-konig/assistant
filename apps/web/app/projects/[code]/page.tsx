@@ -23,6 +23,7 @@ import { ProjectTasks } from "@/components/projects/project-tasks";
 import { ProjectMeetings } from "@/components/projects/project-meetings";
 import { ProjectNotes } from "@/components/projects/project-notes";
 import { ChatPanel, type ChatMessage } from "@/components/chat/chat-panel";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
 const statusColors = {
   ACTIVE: "bg-green-500",
@@ -113,6 +114,31 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
         </div>
 
         <div className="flex gap-2">
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button variant="default" size="sm">Chat</Button>
+            </SheetTrigger>
+            <SheetContent side="right" className="sm:max-w-xl">
+              <SheetHeader>
+                <SheetTitle>Project Chat</SheetTitle>
+              </SheetHeader>
+              <div className="flex-1 min-h-0 p-2">
+                <ChatPanel
+                  context={`### ${project.name}\n${project.description ? project.description : '_No description yet._'}`}
+                  contextKey={project.code}
+                  messages={messages as ChatMessage[]}
+                  streaming={chat.isStreaming}
+                  streamText={chat.reply}
+                  onSend={async (text) => {
+                    setMessages((prev) => [...prev, { role: 'user', content: text }]);
+                    const final = await chat.send(text);
+                    setMessages((prev) => [...prev, { role: 'assistant', content: final }]);
+                  }}
+                  onStop={() => chat.cancel()}
+                />
+              </div>
+            </SheetContent>
+          </Sheet>
           <EditProjectDialog project={project}>
             <Button variant="secondary" size="sm">Edit Project</Button>
           </EditProjectDialog>
@@ -275,20 +301,7 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
         </TabsContent>
       </Tabs>
 
-      {/* Project-specific Agent Chat */}
-      <ChatPanel
-        title="Project Chat"
-        subtitle="This chat talks to the project-specific agent."
-        messages={messages as ChatMessage[]}
-        streaming={chat.isStreaming}
-        streamText={chat.reply}
-        onSend={async (text) => {
-          setMessages((prev) => [...prev, { role: 'user', content: text }]);
-          const final = await chat.send(text);
-          setMessages((prev) => [...prev, { role: 'assistant', content: final }]);
-        }}
-        onStop={() => chat.cancel()}
-      />
+      {/* Chat moved into right-side Sheet */}
     </div>
   );
 }

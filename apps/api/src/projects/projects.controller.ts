@@ -23,6 +23,26 @@ export class ProjectsController {
 
   // Basic agent mode: no RAG helpers
 
+  // Light history clamp: keep last N turns, trim long turns, and enforce simple char budget
+  private clampHistory(
+    history: { role: 'user' | 'assistant'; content: string }[],
+    opts?: { maxTurns?: number; charBudget?: number; perTurnMax?: number },
+  ) {
+    const maxTurns = opts?.maxTurns ?? 9;
+    const charBudget = opts?.charBudget ?? 2000;
+    const perTurnMax = opts?.perTurnMax ?? 600;
+    // 1) Keep only the last maxTurns
+    let trimmed = history.slice(Math.max(0, history.length - maxTurns));
+    // 2) Trim each turn's content to perTurnMax (take most recent portion)
+    trimmed = trimmed.map((t) => ({ ...t, content: (t.content ?? '').slice(-perTurnMax) }));
+    // 3) Enforce overall budget by dropping oldest until within budget
+    const total = () => trimmed.reduce((acc, t) => acc + (t.content?.length ?? 0), 0);
+    while (trimmed.length > 0 && total() > charBudget) {
+      trimmed.shift();
+    }
+    return trimmed;
+  }
+
   @Post()
   async create(@Body() dto: CreateProjectReq): Promise<Project> {
     const slug = (dto.code ?? dto.name)
@@ -155,10 +175,14 @@ export class ProjectsController {
     try {
       const project = await this.projects.getLocalBySlug(code);
       await this.chatSvc.appendMessage(project.userId, project.id, { role: "user", content: message });
+      // Load last 9 turns (excluding the one we just saved) to keep total ~10
+      const historyRaw = await this.chatSvc.getRecent(project.id, 9);
+      const history = this.clampHistory(historyRaw);
       let full = "";
-      for await (const delta of this.projAgent.replyStream(
+      for await (const delta of this.projAgent.replyStreamWithHistory(
         { id: project.id, slug: project.slug, description: (project as any).description ?? null },
         message,
+        history,
       )) {
         full += delta;
         sse.write({ token: delta });
@@ -182,10 +206,13 @@ export class ProjectsController {
     try {
       const project = await this.projects.getLocalBySlug(code);
       await this.chatSvc.appendMessage(project.userId, project.id, { role: "user", content: message });
+      const historyRaw = await this.chatSvc.getRecent(project.id, 9);
+      const history = this.clampHistory(historyRaw);
       let full = "";
-      for await (const delta of this.projAgent.replyStream(
+      for await (const delta of this.projAgent.replyStreamWithHistory(
         { id: project.id, slug: project.slug, description: (project as any).description ?? null },
         message,
+        history,
       )) {
         full += delta;
         sse.write({ token: delta });
