@@ -11,6 +11,7 @@ export interface Project {
   id: string;
   name: string;
   code: string;           // slug/code used in routes
+  description?: string | null;
   status: ProjectStatus;
   riskScore: number;      // 0..100
   openTasks?: number | null;
@@ -21,7 +22,9 @@ export interface Project {
 }
 
 // API contracts
-export interface CreateProjectReq { name: string; code?: string }
+export interface CreateProjectReq { name: string; code?: string; description?: string | null }
 export type CreateProjectRes = Project;
 export type ListProjectsRes = Project[];
 
+export interface UpdateProjectReq { name?: string; code?: string; description?: string | null }
+export type UpdateProjectRes = Project;

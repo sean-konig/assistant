@@ -12,6 +12,7 @@ export interface Project {
   id: string
   name: string
   code: string // short handle e.g., 'VAS'
+  description?: string | null
   status: ProjectStatus
   riskScore: number // 0-100
   owner?: Person

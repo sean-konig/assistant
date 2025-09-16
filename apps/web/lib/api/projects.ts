@@ -1,7 +1,7 @@
 'use client';
 
 import { api } from './axios';
-import type { CreateProjectReq, CreateProjectRes, ListProjectsRes } from '@repo/types';
+import type { CreateProjectReq, CreateProjectRes, ListProjectsRes, UpdateProjectReq, UpdateProjectRes } from '@repo/types';
 import type { Project as UiProject, Note, Task, Meeting } from '@/lib/types';
 
 export type ProjectDetails = UiProject & {
@@ -16,6 +16,7 @@ export const ProjectsApi = {
   create: async (payload: CreateProjectReq) => (await api.post<CreateProjectRes>('/projects', payload)).data,
   get: async (code: string) => (await api.get<CreateProjectRes>(`/projects/${code}`)).data,
   getWithDetails: async (code: string) => (await api.get<ProjectDetails>(`/projects/${code}`)).data,
+  update: async (code: string, payload: UpdateProjectReq) => (await api.patch<UpdateProjectRes>(`/projects/${code}`, payload)).data,
   addNote: async (
     code: string,
     payload: { markdown: string; summaryMarkdown?: string; tags?: string[]; authorEmail?: string; noteType?: string; vector?: number[]; dim?: number },

@@ -9,6 +9,7 @@ import { Progress } from "@/components/ui/progress"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Search, Grid, List, ExternalLink } from "lucide-react"
 import { useProjects } from "@/lib/api/hooks"
+import { CreateProjectDialog } from "@/components/projects/create-project-dialog"
 import { format } from "date-fns"
 import Link from "next/link"
 import { useProjectStore } from "@/lib/state/project.store"
@@ -68,9 +69,14 @@ export default function ProjectsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight">Projects</h1>
-        <p className="text-muted-foreground">Manage and track all your projects</p>
+        <div className="flex items-center gap-3">
+          <p className="text-muted-foreground">Manage and track all your projects</p>
+          <CreateProjectDialog>
+            <Button size="sm">New Project</Button>
+          </CreateProjectDialog>
+        </div>
       </div>
 
       {/* Filters and Search */}

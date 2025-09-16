@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
 import { ProjectOverview } from "@/components/projects/project-overview";
+import { EditProjectDialog } from "@/components/projects/edit-project-dialog";
 import { ProjectTasks } from "@/components/projects/project-tasks";
 import { ProjectMeetings } from "@/components/projects/project-meetings";
 import { ProjectNotes } from "@/components/projects/project-notes";
@@ -112,6 +113,9 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
         </div>
 
         <div className="flex gap-2">
+          <EditProjectDialog project={project}>
+            <Button variant="secondary" size="sm">Edit Project</Button>
+          </EditProjectDialog>
           <Button
             variant="outline"
             size="sm"

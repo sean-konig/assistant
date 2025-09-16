@@ -6,9 +6,9 @@ import type { Project as ProjectType } from "@repo/types";
 export class ProjectsService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
-  async create(userId: string, data: { name: string; slug: string }) {
+  async create(userId: string, data: { name: string; slug: string; description?: string | null }) {
     try {
-      return await this.prisma.project.create({ data: { ...data, userId } });
+      return await this.prisma.project.create({ data: { name: data.name, slug: data.slug, description: data.description ?? null, userId } });
     } catch (e: any) {
       if (e.code === "P2002") throw new ConflictException("Project slug already exists");
       throw e;
@@ -33,11 +33,12 @@ export class ProjectsService {
   }
 
   // Map DB row -> shared API shape
-  mapToProject(row: { id: string; name: string; slug: string; createdAt: Date; updatedAt: Date }): ProjectType {
+  mapToProject(row: { id: string; name: string; slug: string; description?: string | null; createdAt: Date; updatedAt: Date }): ProjectType {
     return {
       id: row.id,
       name: row.name,
       code: row.slug,
+      description: row.description ?? null,
       status: "ACTIVE",
       riskScore: 0,
       openTasks: null,
@@ -46,6 +47,20 @@ export class ProjectsService {
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };
+  }
+
+  async updateBySlug(userId: string, slug: string, data: { name?: string; slug?: string; description?: string | null }) {
+    const existing = await this.prisma.project.findFirst({ where: { userId, slug } });
+    if (!existing) throw new NotFoundException("Project not found");
+    const updated = await this.prisma.project.update({
+      where: { id: existing.id },
+      data: {
+        name: data.name ?? undefined,
+        slug: data.slug ?? undefined,
+        description: data.description === undefined ? undefined : data.description,
+      },
+    });
+    return updated;
   }
 
   async getProjectDetails(projectId: string) {
@@ -203,5 +218,17 @@ export class ProjectsService {
       null,
       now,
     );
+  }
+
+  async getRecentChat(projectId: string, limit = 10): Promise<{ role: "user" | "assistant"; content: string }[]> {
+    const rows = (await this.prisma.$queryRawUnsafe(
+      'SELECT body, raw, "createdAt" FROM items WHERE "projectId" = $1 AND raw->>\'kind\' = $2 ORDER BY "createdAt" DESC LIMIT $3',
+      projectId,
+      'CHAT',
+      limit,
+    )) as any[];
+    const turns = rows.map((r) => ({ role: (r.raw?.role ?? 'assistant') as 'user' | 'assistant', content: r.body ?? '' }));
+    // Return oldest -> newest
+    return turns.reverse();
   }
 }

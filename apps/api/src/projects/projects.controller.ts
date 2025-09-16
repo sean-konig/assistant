@@ -1,11 +1,9 @@
-import { Body, Controller, Get, Inject, Param, Post, Query, Res, Req } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Param, Post, Query, Res, Req, BadRequestException, Patch } from "@nestjs/common";
 import { ApiTags } from "@nestjs/swagger";
 import { ProjectsService } from "./projects.service";
 import type { CreateProjectReq, Project } from "@repo/types";
 import { EmbeddingsService } from "../embeddings/embeddings.service";
-import { ProjectAgent } from "../agents/project-agent.service";
-import { OpenAiService } from "../llm/openai.service";
-import { PrismaService } from "../prisma/prisma.service";
+import { ProjectAgentService } from "../agents/project-agent.service";
 import { createSse } from "../common/http/sse";
 
 @ApiTags("projects")
@@ -14,10 +12,10 @@ export class ProjectsController {
   constructor(
     @Inject(ProjectsService) private readonly projects: ProjectsService,
     @Inject(EmbeddingsService) private readonly embeddings: EmbeddingsService,
-    @Inject(ProjectAgent) private readonly agent: ProjectAgent,
-    @Inject(OpenAiService) private readonly llm: OpenAiService,
-    @Inject(PrismaService) private readonly prisma: PrismaService
+    @Inject(ProjectAgentService) private readonly projAgent: ProjectAgentService,
   ) {}
+
+  // Basic agent mode: no RAG helpers
 
   @Post()
   async create(@Body() dto: CreateProjectReq): Promise<Project> {
@@ -27,7 +25,7 @@ export class ProjectsController {
       .replace(/[^a-z0-9\s-]/g, "")
       .replace(/\s+/g, "-")
       .replace(/-+/g, "-");
-    const created = await this.projects.create("seank", { name: dto.name, slug });
+    const created = await this.projects.create("seank", { name: dto.name, slug, description: dto.description ?? null });
     return this.projects.mapToProject(created);
   }
 
@@ -43,6 +41,28 @@ export class ProjectsController {
     const base = this.projects.mapToProject(row);
     const details = await this.projects.getProjectDetails(row.id);
     return { ...base, ...details };
+  }
+
+  @Patch(":code")
+  async update(
+    @Param("code") code: string,
+    @Body() body: { name?: string; code?: string; description?: string | null },
+  ): Promise<Project> {
+    const newSlug = body.code
+      ? body.code
+          .toLowerCase()
+          .trim()
+          .replace(/[^a-z0-9\s-]/g, "")
+          .replace(/\s+/g, "-")
+          .replace(/-+/g, "-")
+      : undefined;
+    const userId = "seank"; // TODO: auth user
+    const updated = await this.projects.updateBySlug(userId, code, {
+      name: body.name,
+      slug: newSlug,
+      description: body.description ?? undefined,
+    });
+    return this.projects.mapToProject(updated);
   }
 
   @Post(":code/notes")
@@ -93,50 +113,80 @@ export class ProjectsController {
   async chat(@Param("code") code: string, @Body() payload: { message: string }) {
     const project = await this.projects.getLocalBySlug(code);
     await this.projects.appendChatMessage(project.userId, project.id, { role: "user", content: payload.message });
-    const qa = await this.agent.qa(project.id, payload.message);
-    await this.projects.appendChatMessage(project.userId, project.id, {
-      role: "assistant",
-      content: qa.answerMarkdown,
-    });
-    return { reply: qa.answerMarkdown };
+    const reply = await this.projAgent.replyOnce(
+      { id: project.id, slug: project.slug, description: (project as any).description ?? null },
+      payload.message,
+    );
+    await this.projects.appendChatMessage(project.userId, project.id, { role: "assistant", content: reply });
+    return { reply };
   }
 
-  @Get(":code/chat/stream")
-  async chatStream(@Param("code") code: string, @Query("message") message: string, @Res() res: any, @Req() req: any) {
+  // Agent (Agents SDK) — non-streaming helper
+  @Post(":code/agent/chat")
+  async projectAgentChat(@Param("code") code: string, @Body() body: { message: string }) {
+    if (!body?.message || typeof body.message !== 'string' || body.message.length > 5000) {
+      throw new BadRequestException('message is required and must be <= 5000 chars');
+    }
+    const project = await this.projects.getLocalBySlug(code);
+    const reply = await this.projAgent.replyOnce(
+      { id: project.id, slug: project.slug, description: (project as any).description ?? null },
+      body.message,
+    );
+    await this.projects.appendChatMessage(project.userId, project.id, { role: "user", content: body.message });
+    await this.projects.appendChatMessage(project.userId, project.id, { role: "assistant", content: reply });
+    return { reply };
+  }
+
+  // Agent (Agents SDK) — streaming (basic)
+  @Get(":code/agent/chat/stream")
+  async projectAgentChatStream(
+    @Param("code") code: string,
+    @Query("message") message: string,
+    @Res() res: any,
+    @Req() req: any,
+  ) {
+    if (!message || message.length > 5000) {
+      throw new BadRequestException('message is required and must be <= 5000 chars');
+    }
     const sse = createSse(res, req, { pingMs: 15000 });
     try {
       const project = await this.projects.getLocalBySlug(code);
       await this.projects.appendChatMessage(project.userId, project.id, { role: "user", content: message });
-
-      // Build retrieval context (best-effort)
-      let context = "";
-      try {
-        const vectors = await this.llm.embed([message]);
-        console.log("I got vectors:", vectors);
-        const qvec = vectors?.[0];
-        const qstr = qvec && qvec.length ? `[${qvec.join(",")}]` : null;
-        const top = qstr
-          ? ((await this.prisma.$queryRawUnsafe(
-              'SELECT i.body, i.raw FROM embeddings e JOIN items i ON i.id = e."itemId" WHERE i."projectId" = $1 ORDER BY e.vector <-> $2::vector LIMIT 6',
-              project.id,
-              qstr
-            )) as any[])
-          : [];
-        context = top.length ? top.map((t) => `- ${t.body || t.raw?.markdown || ""}`).join("\n") : "";
-      } catch {
-        context = "";
+      let full = "";
+      for await (const delta of this.projAgent.replyStream(
+        { id: project.id, slug: project.slug, description: (project as any).description ?? null },
+        message,
+      )) {
+        full += delta;
+        sse.write({ token: delta });
       }
 
-      const system =
-        "You are the project-specific agent. Answer using only the provided context when relevant. Be concise.";
-      const user = context ? `Question: ${message}\n\nContext:\n${context}` : message;
+      await this.projects.appendChatMessage(project.userId, project.id, { role: "assistant", content: full });
+      sse.write({ done: true });
+    } catch (e: any) {
+      sse.write({ error: e?.message || "stream failed" });
+    } finally {
+      sse.close(5);
+    }
+  }
 
+  @Get(":code/chat/stream")
+  async chatStream(@Param("code") code: string, @Query("message") message: string, @Res() res: any, @Req() req: any) {
+    if (!message || message.length > 5000) {
+      throw new BadRequestException('message is required and must be <= 5000 chars');
+    }
+    const sse = createSse(res, req, { pingMs: 15000 });
+    try {
+      const project = await this.projects.getLocalBySlug(code);
+      await this.projects.appendChatMessage(project.userId, project.id, { role: "user", content: message });
       let full = "";
-      await this.llm.streamChatMarkdown(system, user, (delta) => {
+      for await (const delta of this.projAgent.replyStream(
+        { id: project.id, slug: project.slug, description: (project as any).description ?? null },
+        message,
+      )) {
         full += delta;
-        console.log("I got delta:", delta);
         sse.write({ token: delta });
-      });
+      }
 
       await this.projects.appendChatMessage(project.userId, project.id, { role: "assistant", content: full });
       sse.write({ done: true });
@@ -152,14 +202,14 @@ export class ProjectsController {
     const project = await this.projects.getLocalBySlug(code);
     const latest = await this.projects.getLatestNoteId(project.id);
     if (!latest) return { ok: true, summarized: 0 };
-    const res = await this.agent.summarizeNote(latest);
+    const res = await this.projAgent.summarizeNote(latest);
     return { ok: true, summarized: 1, ...res };
   }
 
   @Post(":code/agent/compute-risk")
   async computeRisk(@Param("code") code: string) {
     const project = await this.projects.getLocalBySlug(code);
-    const row = await this.agent.computeRisk(project.id);
+    const row = await this.projAgent.computeRisk(project.id);
     return row;
   }
 }

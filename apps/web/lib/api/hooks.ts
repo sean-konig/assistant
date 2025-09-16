@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { ProjectsApi } from "./projects";
-import type { CreateProjectReq } from "@repo/types";
+import type { CreateProjectReq, UpdateProjectReq } from "@repo/types";
 import type { Project as UiProject, Task, Meeting, Note } from "@/lib/types";
 
 export function useProjects() {
@@ -21,6 +21,20 @@ export function useCreateProject() {
       qc.setQueryData(["projects"], (prev: any) => {
         const list = Array.isArray(prev) ? prev : [];
         return [created, ...list.filter((p: any) => p.id !== created.id)];
+      });
+    },
+  });
+}
+
+export function useUpdateProject(code: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: UpdateProjectReq) => ProjectsApi.update(code, payload),
+    onSuccess: (updated) => {
+      qc.invalidateQueries({ queryKey: ["project", code] });
+      qc.setQueryData(["projects"], (prev: any) => {
+        const list = Array.isArray(prev) ? prev : [];
+        return [updated, ...list.filter((p: any) => p.id !== updated.id)];
       });
     },
   });
