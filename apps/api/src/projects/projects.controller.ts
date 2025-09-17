@@ -1,4 +1,16 @@
-import { Body, Controller, Get, Inject, Param, Post, Query, Res, Req, BadRequestException, Patch } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  Inject,
+  Param,
+  Post,
+  Query,
+  Res,
+  Req,
+  BadRequestException,
+  Patch,
+} from "@nestjs/common";
 import { ApiTags } from "@nestjs/swagger";
 import { ProjectsService } from "./projects.service";
 import type { CreateProjectReq, Project } from "@repo/types";
@@ -18,15 +30,15 @@ export class ProjectsController {
     @Inject(ProjectNotesService) private readonly notes: ProjectNotesService,
     @Inject(ProjectTasksService) private readonly tasks: ProjectTasksService,
     @Inject(ProjectChatService) private readonly chatSvc: ProjectChatService,
-    @Inject(ProjectDetailsService) private readonly details: ProjectDetailsService,
+    @Inject(ProjectDetailsService) private readonly details: ProjectDetailsService
   ) {}
 
   // Basic agent mode: no RAG helpers
 
   // Light history clamp: keep last N turns, trim long turns, and enforce simple char budget
   private clampHistory(
-    history: { role: 'user' | 'assistant'; content: string }[],
-    opts?: { maxTurns?: number; charBudget?: number; perTurnMax?: number },
+    history: { role: "user" | "assistant"; content: string }[],
+    opts?: { maxTurns?: number; charBudget?: number; perTurnMax?: number }
   ) {
     const maxTurns = opts?.maxTurns ?? 9;
     const charBudget = opts?.charBudget ?? 2000;
@@ -34,7 +46,7 @@ export class ProjectsController {
     // 1) Keep only the last maxTurns
     let trimmed = history.slice(Math.max(0, history.length - maxTurns));
     // 2) Trim each turn's content to perTurnMax (take most recent portion)
-    trimmed = trimmed.map((t) => ({ ...t, content: (t.content ?? '').slice(-perTurnMax) }));
+    trimmed = trimmed.map((t) => ({ ...t, content: (t.content ?? "").slice(-perTurnMax) }));
     // 3) Enforce overall budget by dropping oldest until within budget
     const total = () => trimmed.reduce((acc, t) => acc + (t.content?.length ?? 0), 0);
     while (trimmed.length > 0 && total() > charBudget) {
@@ -72,7 +84,7 @@ export class ProjectsController {
   @Patch(":code")
   async update(
     @Param("code") code: string,
-    @Body() body: { name?: string; code?: string; description?: string | null },
+    @Body() body: { name?: string; code?: string; description?: string | null }
   ): Promise<Project> {
     const newSlug = body.code
       ? body.code
@@ -138,7 +150,7 @@ export class ProjectsController {
     await this.chatSvc.appendMessage(project.userId, project.id, { role: "user", content: payload.message });
     const reply = await this.projAgent.replyOnce(
       { id: project.id, slug: project.slug, description: (project as any).description ?? null },
-      payload.message,
+      payload.message
     );
     await this.chatSvc.appendMessage(project.userId, project.id, { role: "assistant", content: reply });
     return { reply };
@@ -147,13 +159,13 @@ export class ProjectsController {
   // Agent (Agents SDK) — non-streaming helper
   @Post(":code/agent/chat")
   async projectAgentChat(@Param("code") code: string, @Body() body: { message: string }) {
-    if (!body?.message || typeof body.message !== 'string' || body.message.length > 5000) {
-      throw new BadRequestException('message is required and must be <= 5000 chars');
+    if (!body?.message || typeof body.message !== "string" || body.message.length > 5000) {
+      throw new BadRequestException("message is required and must be <= 5000 chars");
     }
     const project = await this.projects.getLocalBySlug(code);
     const reply = await this.projAgent.replyOnce(
       { id: project.id, slug: project.slug, description: (project as any).description ?? null },
-      body.message,
+      body.message
     );
     await this.chatSvc.appendMessage(project.userId, project.id, { role: "user", content: body.message });
     await this.chatSvc.appendMessage(project.userId, project.id, { role: "assistant", content: reply });
@@ -166,10 +178,10 @@ export class ProjectsController {
     @Param("code") code: string,
     @Query("message") message: string,
     @Res() res: any,
-    @Req() req: any,
+    @Req() req: any
   ) {
     if (!message || message.length > 5000) {
-      throw new BadRequestException('message is required and must be <= 5000 chars');
+      throw new BadRequestException("message is required and must be <= 5000 chars");
     }
     const sse = createSse(res, req, { pingMs: 15000 });
     try {
@@ -182,7 +194,7 @@ export class ProjectsController {
       for await (const delta of this.projAgent.replyStreamWithHistory(
         { id: project.id, slug: project.slug, description: (project as any).description ?? null },
         message,
-        history,
+        history
       )) {
         full += delta;
         sse.write({ token: delta });
@@ -200,7 +212,7 @@ export class ProjectsController {
   @Get(":code/chat/stream")
   async chatStream(@Param("code") code: string, @Query("message") message: string, @Res() res: any, @Req() req: any) {
     if (!message || message.length > 5000) {
-      throw new BadRequestException('message is required and must be <= 5000 chars');
+      throw new BadRequestException("message is required and must be <= 5000 chars");
     }
     const sse = createSse(res, req, { pingMs: 15000 });
     try {
@@ -212,7 +224,7 @@ export class ProjectsController {
       for await (const delta of this.projAgent.replyStreamWithHistory(
         { id: project.id, slug: project.slug, description: (project as any).description ?? null },
         message,
-        history,
+        history
       )) {
         full += delta;
         sse.write({ token: delta });
@@ -222,6 +234,89 @@ export class ProjectsController {
       sse.write({ done: true });
     } catch (e: any) {
       sse.write({ error: e?.message || "stream failed" });
+    } finally {
+      sse.close(5);
+    }
+  }
+
+  // RAG-enabled Agent endpoints (with vector context retrieval)
+  @Post(":code/agent/rag/chat")
+  async projectAgentRagChat(@Param("code") code: string, @Body() body: { message: string }) {
+    if (!body?.message || typeof body.message !== "string" || body.message.length > 5000) {
+      throw new BadRequestException("message is required and must be <= 5000 chars");
+    }
+
+    console.log(`[RAG-ENDPOINT] 📨 RAG Chat request for project "${code}"`);
+    console.log(
+      `[RAG-ENDPOINT] 💬 User message: "${body.message.slice(0, 100)}${body.message.length > 100 ? "..." : ""}"`
+    );
+
+    const project = await this.projects.getLocalBySlug(code);
+
+    // Load recent chat history
+    const historyRaw = await this.chatSvc.getRecent(project.id, 9);
+    const history = this.clampHistory(historyRaw);
+
+    console.log(`[RAG-ENDPOINT] 📚 Loaded ${history.length} history messages`);
+
+    // Use RAG streaming method but collect full response
+    let full = "";
+    for await (const delta of this.projAgent.replyStreamWithHistoryAndRag(
+      { id: project.id, slug: project.slug, description: (project as any).description ?? null },
+      body.message,
+      history
+    )) {
+      full += delta;
+    }
+
+    await this.chatSvc.appendMessage(project.userId, project.id, { role: "user", content: body.message });
+    await this.chatSvc.appendMessage(project.userId, project.id, { role: "assistant", content: full });
+
+    console.log(`[RAG-ENDPOINT] ✅ RAG Chat completed, response length: ${full.length} chars`);
+    return { reply: full };
+  }
+
+  @Get(":code/agent/rag/chat/stream")
+  async projectAgentRagChatStream(
+    @Param("code") code: string,
+    @Query("message") message: string,
+    @Res() res: any,
+    @Req() req: any
+  ) {
+    if (!message || message.length > 5000) {
+      throw new BadRequestException("message is required and must be <= 5000 chars");
+    }
+
+    console.log(`[RAG-STREAM] 🌊 RAG Streaming request for project "${code}"`);
+    console.log(`[RAG-STREAM] 💬 User message: "${message.slice(0, 100)}${message.length > 100 ? "..." : ""}"`);
+
+    const sse = createSse(res, req, { pingMs: 15000 });
+    try {
+      const project = await this.projects.getLocalBySlug(code);
+      await this.chatSvc.appendMessage(project.userId, project.id, { role: "user", content: message });
+
+      // Load last 9 turns (excluding the one we just saved) to keep total ~10
+      const historyRaw = await this.chatSvc.getRecent(project.id, 9);
+      const history = this.clampHistory(historyRaw);
+
+      console.log(`[RAG-STREAM] 📚 Loaded ${history.length} history messages, starting RAG stream...`);
+
+      let full = "";
+      for await (const delta of this.projAgent.replyStreamWithHistoryAndRag(
+        { id: project.id, slug: project.slug, description: (project as any).description ?? null },
+        message,
+        history
+      )) {
+        full += delta;
+        sse.write({ token: delta });
+      }
+
+      await this.chatSvc.appendMessage(project.userId, project.id, { role: "assistant", content: full });
+      console.log(`[RAG-STREAM] ✅ RAG Stream completed, response length: ${full.length} chars`);
+      sse.write({ done: true });
+    } catch (e: any) {
+      console.error(`[RAG-STREAM] ❌ RAG Stream error:`, e);
+      sse.write({ error: e?.message || "RAG stream failed" });
     } finally {
       sse.close(5);
     }

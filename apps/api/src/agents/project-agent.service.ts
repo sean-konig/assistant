@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { OpenAiService } from "../llm/openai.service";
+import { EmbeddingsService } from "../embeddings/embeddings.service";
 import {
   Agent,
   run,
@@ -19,6 +20,7 @@ export class ProjectAgentService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly llm: OpenAiService,
+    private readonly embeddings: EmbeddingsService
   ) {
     if (process.env.OPENAI_API_KEY) {
       setDefaultOpenAIKey(process.env.OPENAI_API_KEY);
@@ -68,13 +70,145 @@ export class ProjectAgentService {
   async *replyStreamWithHistory(
     project: ProjectLite,
     latest: string,
-    history: { role: "user" | "assistant"; content: string }[],
+    history: { role: "user" | "assistant"; content: string }[]
   ) {
     const agent = this.createAgent(project);
     const seq = this.toMessageSequence(history, latest);
     const streamed = await run(agent, seq, { context: { projectId: project.id }, stream: true });
     const textStream = streamed.toTextStream({ compatibleWithNodeStreams: true });
     for await (const delta of textStream) yield String(delta);
+  }
+
+  // RAG: Query time vector search to fetch top-k context
+  async getTopKContext(projectId: string, query: string, k = 6): Promise<string[]> {
+    try {
+      console.log(`[RAG] Starting context retrieval for query: "${query.slice(0, 100)}..."`);
+      console.log(`[RAG] Parameters: projectId=${projectId}, k=${k}`);
+
+      // Embed the query
+      const [qvec] = await this.embeddings.embed([query]);
+      if (!qvec?.length) {
+        console.log(`[RAG] ❌ No embedding generated for query`);
+        return [];
+      }
+
+      console.log(`[RAG] ✅ Generated query embedding with ${qvec.length} dimensions`);
+
+      // Query with pgvector similarity search
+      const qstr = `[${qvec.join(",")}]`;
+      console.log(`[RAG] 🔍 Executing similarity search...`);
+
+      const rows = await this.prisma.$queryRawUnsafe<any[]>(
+        `SELECT i.body, i.raw, e.vector <-> $2::vector as distance
+         FROM embeddings e
+         JOIN items i ON i.id = e."itemId"
+         WHERE e."projectId" = $1
+         ORDER BY e.vector <-> $2::vector
+         LIMIT ${k}`,
+        projectId,
+        qstr
+      );
+
+      console.log(`[RAG] 📊 Found ${rows.length} similarity matches from database`);
+
+      // Extract content from results
+      const contextSnippets = rows
+        .map((r, idx) => {
+          const content = r.body || r.raw?.markdown || "";
+          const distance = parseFloat(r.distance || "1.0");
+          console.log(`[RAG] Match ${idx + 1}: distance=${distance.toFixed(4)}, content_length=${content.length}`);
+          return { content: content.trim(), distance };
+        })
+        .filter((item) => item.content.length > 0)
+        .map((item, idx) => {
+          const truncated = item.content.slice(0, 200);
+          console.log(`[RAG] Context ${idx + 1}: "${truncated}${item.content.length > 200 ? "..." : ""}"`);
+          return item.content;
+        });
+
+      console.log(`[RAG] ✅ Retrieved ${contextSnippets.length} valid context snippets`);
+      return contextSnippets;
+    } catch (error) {
+      console.error("[RAG] ❌ Error retrieving context:", error);
+      return [];
+    }
+  }
+
+  // STREAMING with history AND RAG context
+  async *replyStreamWithHistoryAndRag(
+    project: ProjectLite,
+    latest: string,
+    history: { role: "user" | "assistant"; content: string }[],
+    fetchContext?: (q: string) => Promise<string[]>
+  ) {
+    console.log(`[RAG] 🚀 Starting RAG pipeline for project "${project}"`);
+    console.log(`[RAG] 📝 User query: "${latest}"`);
+    console.log(`[RAG] 📚 Chat history length: ${history.length} messages`);
+
+    const agent = this.createAgent(project);
+
+    // Fetch relevant context using RAG
+    console.log(`[RAG] 🔍 Searching for relevant context...`);
+    const contextFetcher = fetchContext || ((q: string) => this.getTopKContext(project.id, q, 6));
+    const contextSnippets = await contextFetcher(latest);
+
+    console.log(`[RAG] 📊 Found ${contextSnippets.length} relevant context snippets`);
+    if (contextSnippets.length > 0) {
+      console.log(`[RAG] 📄 Context preview:`);
+      contextSnippets.forEach((snippet, idx) => {
+        const preview = snippet.slice(0, 100).replace(/\n/g, " ").trim();
+        console.log(`[RAG]   ${idx + 1}. "${preview}${snippet.length > 100 ? "..." : ""}"`);
+      });
+    }
+
+    // Build context block if we have relevant content
+    const contextBlock = contextSnippets.length
+      ? `Context (top ${contextSnippets.length}):\n` +
+        contextSnippets.map((c, i) => `${i + 1}. ${c.slice(0, 200)}...`).join("\n")
+      : "";
+
+    console.log(`[RAG] 🏗️  Building context block (${contextBlock.length} chars):`, contextBlock ? "YES" : "NO");
+    if (contextBlock) {
+      console.log(
+        `[RAG] 📋 Context block preview: "${contextBlock.slice(0, 200)}${contextBlock.length > 200 ? "..." : ""}"`
+      );
+    }
+
+    // Build message sequence: system context + history + latest user message
+    const seq: any[] = [];
+
+    if (contextBlock) {
+      const systemMessage = "Use the following context if relevant. If not relevant, ignore it.\n" + contextBlock;
+      seq.push(s(systemMessage));
+      console.log(`[RAG] 🤖 Added system context message (${systemMessage.length} chars)`);
+    } else {
+      console.log(`[RAG] ⚠️  No context found - proceeding without RAG augmentation`);
+    }
+
+    // Add chat history
+    console.log(`[RAG] 💬 Adding ${history.length} history messages to conversation`);
+    for (const h of history) {
+      seq.push(h.role === "user" ? user(h.content) : a(h.content));
+    }
+
+    // Add latest user message
+    seq.push(user(latest));
+    console.log(`[RAG] ✉️  Added latest user message: "${latest.slice(0, 100)}${latest.length > 100 ? "..." : ""}"`);
+
+    console.log(`[RAG] 🎯 Total message sequence length: ${seq.length} messages`);
+    console.log(`[RAG] 🚀 Starting LLM streaming response...`);
+
+    // Stream the response
+    const streamed = await run(agent, seq, { context: { projectId: project.id }, stream: true });
+    const textStream = streamed.toTextStream({ compatibleWithNodeStreams: true });
+
+    let totalChunks = 0;
+    for await (const delta of textStream) {
+      totalChunks++;
+      yield String(delta);
+    }
+
+    console.log(`[RAG] ✅ RAG streaming completed - sent ${totalChunks} chunks`);
   }
 
   // No history/RAG variants in the basic agent
@@ -100,22 +234,24 @@ export class ProjectAgentService {
   }
 
   async computeRisk(projectId: string) {
-    const items = await this.prisma.$queryRaw<any[]>`SELECT raw, "createdAt" FROM items WHERE "projectId" = ${projectId}`;
+    const items = await this.prisma.$queryRaw<
+      any[]
+    >`SELECT raw, "createdAt" FROM items WHERE "projectId" = ${projectId}`;
     const now = Date.now();
     const recentNotes = items.filter(
-      (i) => i.raw?.kind === "NOTE" && (now - new Date(i.createdAt).getTime()) / (1000 * 60 * 60 * 24) <= 14,
+      (i) => i.raw?.kind === "NOTE" && (now - new Date(i.createdAt).getTime()) / (1000 * 60 * 60 * 24) <= 14
     );
     const riskTagCount = recentNotes.reduce(
       (acc, i) =>
-        acc + (Array.isArray(i.raw?.tags) ? (i.raw.tags as string[]).filter((t) => /risk|block|issue/.test(t)).length : 0),
-      0,
+        acc +
+        (Array.isArray(i.raw?.tags) ? (i.raw.tags as string[]).filter((t) => /risk|block|issue/.test(t)).length : 0),
+      0
     );
     const openTasks = items.filter((i) => i.raw?.kind === "TASK" && i.raw?.status !== "DONE").length;
     const score = Math.max(0, Math.min(100, openTasks * 10 + riskTagCount * 5));
     const factors = { openTasks, riskTagCount };
-    const userId = (
-      await this.prisma.project.findUnique({ where: { id: projectId }, select: { userId: true } })
-    )!.userId;
+    const userId = (await this.prisma.project.findUnique({ where: { id: projectId }, select: { userId: true } }))!
+      .userId;
     const row = await this.prisma.riskScore.create({ data: { userId, projectId, score, factors } });
     return row;
   }
