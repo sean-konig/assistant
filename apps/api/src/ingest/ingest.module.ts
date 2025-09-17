@@ -1,12 +1,21 @@
-import { Module } from "@nestjs/common";
-import { IngestController } from "./ingest.controller";
-import { IngestService } from "./ingest.service";
-import { PrismaModule } from "../prisma/prisma.module";
-import { JobsModule } from "../jobs/jobs.module";
+import { Module, forwardRef } from '@nestjs/common';
+import { IngestController } from './ingest.controller';
+import { IngestService } from './ingest.service';
+import { IngestProcessor } from './ingest-processor.service';
+import { PrismaModule } from '../prisma/prisma.module';
+import { JobsModule } from '../jobs/jobs.module';
+import { EmbeddingsModule } from '../embeddings/embeddings.module';
+import { LlmModule } from '../llm/openai.module';
 
 @Module({
-  imports: [PrismaModule, JobsModule],
+  imports: [
+    PrismaModule, 
+    forwardRef(() => JobsModule), 
+    EmbeddingsModule, 
+    LlmModule
+  ],
   controllers: [IngestController],
-  providers: [IngestService],
+  providers: [IngestService, IngestProcessor],
+  exports: [IngestService, IngestProcessor],
 })
 export class IngestModule {}

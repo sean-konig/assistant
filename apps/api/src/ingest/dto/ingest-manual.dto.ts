@@ -30,3 +30,10 @@ export class IngestManualDto {
 export interface IngestManualResponseDto {
   itemId: string;
 }
+
+export interface IngestJobDetails {
+  itemId: string;
+  userId: string;
+  projectId: string | null;
+  text: string;
+}

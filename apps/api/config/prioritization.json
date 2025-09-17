@@ -1,0 +1,20 @@
+{
+  "weights": {
+    "urgency": 0.4,
+    "impact": 0.4,
+    "risk_boost": 0.15,
+    "effort_penalty": 0.05
+  },
+  "keywords": {
+    "urgency": ["today", "tomorrow", "EOD", "deadline", "urgent", "ASAP", "immediately"],
+    "impact": ["prod", "deployment", "customer", "security", "payment", "auth", "production", "critical"],
+    "risk": ["blocked", "risk", "slipping", "dependency", "issue", "problem"],
+    "effort_low": ["small", "quick", "typo", "copy", "minor", "simple"],
+    "effort_high": ["spike", "refactor", "migration", "redesign", "complex", "architecture"]
+  },
+  "bucket_thresholds": {
+    "P0": 70,
+    "P1": 50,
+    "P2": 30
+  }
+}
