@@ -19,14 +19,16 @@ model User {
   name        String?                  // friendly display name
   role        Role     @default(USER)
 
-  projects    Project[]
-  sources     Source[]
-  items       Item[]
-  embeddings  Embedding[]
-  riskScores  RiskScore[]
-  digests     Digest[]
-  reminders   Reminder[]
-  jobs        JobRun[]
+  projects     Project[]
+  sources      Source[]
+  items        Item[]
+  embeddings   Embedding[]
+  riskScores   RiskScore[]
+  digests      Digest[]
+  reminders    Reminder[]
+  jobs         JobRun[]
+  tasks        Task[]
+  dailyDigests DailyDigest[]
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -45,9 +47,11 @@ model Project {
   updatedAt DateTime @updatedAt
 
   @@unique([userId, slug])
-  Item Item[]
-  RiskScore RiskScore[]
-  Embedding Embedding[]
+  Item         Item[]
+  RiskScore    RiskScore[]
+  Embedding    Embedding[]
+  Task         Task[]
+  DailyDigest  DailyDigest[]
 
   @@map("projects")
 }
@@ -99,6 +103,7 @@ model Item {
   updatedAt  DateTime  @updatedAt
 
   Embedding Embedding[]
+  Task      Task[]
 
   @@map("items")
 }
@@ -165,6 +170,45 @@ model JobRun {
   finishedAt DateTime?
 
   @@map("job_runs")
+}
+
+model Task {
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId         String?
+  project           Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  title             String
+  description       String?
+  owner             String   @default("me")
+  dueDate           DateTime?
+  status            String   @default("todo") // todo|in_progress|done
+  priorityScore     Float?
+  priorityBucket    String? // P0|P1|P2|P3
+  reason            Json? // explanation blob from prioritizer
+  sourceItemId      String?
+  sourceItem        Item?    @relation(fields: [sourceItemId], references: [id], onDelete: SetNull)
+  signals           String[] @default([])
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([priorityBucket])
+  @@map("tasks")
+}
+
+model DailyDigest {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  forDate   DateTime @db.Date
+  summaryMd String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, projectId, forDate])
+  @@map("daily_digests")
 }
 
 enum Role {
