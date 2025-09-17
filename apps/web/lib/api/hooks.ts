@@ -131,7 +131,7 @@ export function useProjectChatStream(code: string) {
       try {
         const base = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3002";
         const url =
-          `${base}/projects/${encodeURIComponent(code)}/chat/stream` +
+          `${base}/projects/${encodeURIComponent(code)}/agent/rag/chat/stream` +
           `?message=${encodeURIComponent(message)}&t=${Date.now()}`;
 
         // Ensure only one open stream

@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Inject } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { OpenAiService } from "../llm/openai.service";
 import { EmbeddingsService } from "../embeddings/embeddings.service";
@@ -18,10 +18,20 @@ type ProjectLite = { id: string; slug: string; description?: string | null };
 @Injectable()
 export class ProjectAgentService {
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly llm: OpenAiService,
-    private readonly embeddings: EmbeddingsService
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(OpenAiService) private readonly llm: OpenAiService,
+    @Inject(EmbeddingsService) private readonly embeddings: EmbeddingsService
   ) {
+    if (process.env.NODE_ENV !== "production") {
+      console.log("[ProjectAgentService] Constructor called", {
+        hasPrisma: Boolean(this.prisma),
+        hasLlm: Boolean(this.llm),
+        hasEmbeddings: Boolean(this.embeddings),
+        embeddingsType: typeof this.embeddings,
+        hasEmbedMethod: Boolean(this.embeddings?.embed),
+      });
+    }
+
     if (process.env.OPENAI_API_KEY) {
       setDefaultOpenAIKey(process.env.OPENAI_API_KEY);
     }
@@ -84,6 +94,22 @@ export class ProjectAgentService {
     try {
       console.log(`[RAG] Starting context retrieval for query: "${query.slice(0, 100)}..."`);
       console.log(`[RAG] Parameters: projectId=${projectId}, k=${k}`);
+      console.log(`[RAG] Service dependency check:`, {
+        hasEmbeddingsService: Boolean(this.embeddings),
+        embeddingsType: typeof this.embeddings,
+        hasEmbedMethod: Boolean(this.embeddings?.embed),
+        embedMethodType: typeof this.embeddings?.embed,
+      });
+
+      if (!this.embeddings) {
+        console.error(`[RAG] ❌ EmbeddingsService is undefined - dependency injection failed`);
+        return [];
+      }
+
+      if (!this.embeddings.embed) {
+        console.error(`[RAG] ❌ EmbeddingsService.embed method is undefined`);
+        return [];
+      }
 
       // Embed the query
       const [qvec] = await this.embeddings.embed([query]);
