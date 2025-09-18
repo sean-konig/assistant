@@ -16,6 +16,7 @@ import { RemindersModule } from "./reminders/reminders.module";
 import { JobsModule } from "./jobs/jobs.module";
 import { IngestModule } from "./ingest/ingest.module";
 import { TasksModule } from "./tasks/tasks.module";
+import { IndexerModule } from "./indexer/indexer.module";
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { TasksModule } from "./tasks/tasks.module";
     JobsModule,
     IngestModule,
     TasksModule,
+    IndexerModule,
   ],
 })
 export class AppModule {}

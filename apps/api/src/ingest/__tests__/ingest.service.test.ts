@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { IngestService } from "../ingest.service";
 import { PrismaService } from "../../prisma/prisma.service";
-import { IngestProcessor } from "../ingest-processor.service";
 import { JobsService } from "../../jobs/jobs.service";
+import { IndexQueueService } from "../../indexer/indexer.queue";
 
 describe("IngestService", () => {
   let service: IngestService;
   let prisma: PrismaService;
-  let ingestProcessor: IngestProcessor;
   let jobs: JobsService;
+  let indexQueue: IndexQueueService;
 
   beforeEach(() => {
     prisma = {
@@ -20,15 +20,15 @@ describe("IngestService", () => {
       },
     } as any;
 
-    ingestProcessor = {
-      processIngestItem: vi.fn(),
-    } as any;
-
     jobs = {
       queue: vi.fn().mockResolvedValue({ id: "job1" }),
     } as any;
 
-    service = new IngestService(prisma, ingestProcessor, jobs);
+    indexQueue = {
+      enqueue: vi.fn(),
+    } as any;
+
+    service = new IngestService(prisma, jobs, indexQueue);
   });
 
   describe("ingestManual", () => {
@@ -60,6 +60,7 @@ describe("IngestService", () => {
         },
       });
       expect(jobs.queue).toHaveBeenCalledWith("user123", "index-item", { itemId: "item123", projectId: "project123" });
+      expect(indexQueue.enqueue).toHaveBeenCalledWith("item123");
     });
 
     it("maps kind to ItemType correctly", async () => {

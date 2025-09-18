@@ -1,12 +1,19 @@
-import { Injectable } from '@nestjs/common'
+import { Inject, Injectable } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
+import { IndexQueueService } from '../indexer/indexer.queue'
 
 @Injectable()
 export class ItemsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(IndexQueueService) private readonly indexQueue: IndexQueueService,
+  ) {}
 
   create(userId: string, data: any) {
-    return this.prisma.item.create({ data: { ...data, userId } })
+    return this.prisma.item.create({ data: { ...data, userId } }).then((item) => {
+      this.indexQueue.enqueue(item.id)
+      return item
+    })
   }
 
   list(userId: string, filters: { projectId?: string; type?: string; q?: string }) {
@@ -48,6 +55,7 @@ export class ItemsService {
       params.occurredAt ?? null,
       now,
     )
+    this.indexQueue.enqueue(id)
     return { id, createdAt: now }
   }
 

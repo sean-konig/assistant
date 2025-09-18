@@ -124,7 +124,9 @@ export class ProjectAgentService {
       const qstr = `[${qvec.join(",")}]`;
       console.log(`[RAG] 🔍 Executing similarity search...`);
 
-      const rows = await this.prisma.$queryRawUnsafe<any[]>(
+      const rows = await this.prisma.$queryRawUnsafe<
+        Array<{ id: string; title: string | null; body: string | null; raw: any; distance: number }>
+      >(
         `SELECT i.id, i.title, i.body, i.raw, e.vector <-> $2::vector as distance
          FROM embeddings e
          JOIN items i ON i.id = e."itemId"
@@ -142,7 +144,10 @@ export class ProjectAgentService {
         .map((r, idx) => {
           // Prefer rich bodies/markdown, but fall back to title for TASK items
           const content = (r.body && String(r.body)) || (r.raw?.markdown && String(r.raw.markdown)) || (r.title && String(r.title)) || "";
-          const distance = parseFloat(r.distance || "1.0");
+          const distance =
+            typeof r.distance === "number"
+              ? r.distance
+              : Number.parseFloat(String(r.distance ?? 1));
           console.log(`[RAG] Match ${idx + 1}: distance=${distance.toFixed(4)}, content_length=${content.length}`);
           return { content: content.trim(), distance };
         })
@@ -152,6 +157,18 @@ export class ProjectAgentService {
           console.log(`[RAG] Context ${idx + 1}: "${truncated}${item.content.length > 200 ? "..." : ""}"`);
           return item.content;
         });
+
+      const refs = rows.map((row) => ({
+        itemId: row.id,
+        score: Number.isFinite(row.distance) ? Number(row.distance) : Number.parseFloat(String(row.distance ?? 0)),
+      }));
+
+      if (refs.length) {
+        console.log(`[RAG] 🔖 Prepared ${refs.length} refs for future citations`);
+      }
+
+      // Attach refs metadata while preserving string[] contract for now
+      (contextSnippets as any).refs = refs;
 
       console.log(`[RAG] ✅ Retrieved ${contextSnippets.length} valid context snippets`);
       return contextSnippets;

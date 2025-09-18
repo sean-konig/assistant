@@ -10,11 +10,15 @@ function makePrismaMock() {
 
 describe('ProjectTasksService', () => {
   let prisma: any;
+  let embeddingPipeline: any;
   let svc: ProjectTasksService;
 
   beforeEach(() => {
     prisma = makePrismaMock();
-    svc = new ProjectTasksService(prisma);
+    embeddingPipeline = {
+      generateAndIndex: vi.fn().mockResolvedValue(undefined),
+    };
+    svc = new ProjectTasksService(prisma, embeddingPipeline);
   });
 
   it('create inserts TASK row', async () => {
@@ -25,4 +29,3 @@ describe('ProjectTasksService', () => {
     expect(prisma.$executeRawUnsafe).toHaveBeenCalledTimes(1);
   });
 });
-

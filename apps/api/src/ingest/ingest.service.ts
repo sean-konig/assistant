@@ -3,12 +3,14 @@ import { PrismaService } from "../prisma/prisma.service";
 import { IngestManualDto, IngestManualResponseDto } from "./dto/ingest-manual.dto";
 import { ItemType, Prisma } from "@prisma/client";
 import { JobsService } from "../jobs/jobs.service";
+import { IndexQueueService } from "../indexer/indexer.queue";
 
 @Injectable()
 export class IngestService {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
-    @Inject(JobsService) private readonly jobs: JobsService
+    @Inject(JobsService) private readonly jobs: JobsService,
+    @Inject(IndexQueueService) private readonly indexQueue: IndexQueueService
   ) {}
 
   async ingestManual(dto: IngestManualDto): Promise<IngestManualResponseDto> {
@@ -37,10 +39,13 @@ export class IngestService {
       },
     });
 
-    // Enqueue non-blocking index job
+    // Fire-and-forget: persist job record (best effort)
     this.jobs
       .queue(userId, "index-item", { itemId: item.id, projectId: project.id })
       .catch((err) => console.error("Failed to queue index job", err));
+
+    // Always enqueue for local indexing
+    this.indexQueue.enqueue(item.id);
 
     return { id: item.id };
   }

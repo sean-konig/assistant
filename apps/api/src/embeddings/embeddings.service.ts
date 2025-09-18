@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Inject } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { OpenAiService } from "../llm/openai.service";
+import { createId } from "@paralleldrive/cuid2";
 
 @Injectable()
 export class EmbeddingsService {
@@ -44,8 +45,11 @@ export class EmbeddingsService {
       throw new Error(`PrismaService not properly injected: ${typeof this.prisma}`);
     }
 
+    const id = createId();
+
     const result = await this.prisma.$queryRawUnsafe<[{ id: string }]>(
-      `INSERT INTO embeddings ("userId", "projectId", "itemId", vector, dim, "createdAt") VALUES ($1, $2, $3, $4::vector, $5, now()) RETURNING id`,
+      `INSERT INTO embeddings (id, "userId", "projectId", "itemId", vector, dim, "createdAt") VALUES ($1, $2, $3, $4, $5::vector, $6, now()) RETURNING id`,
+      id,
       userId,
       projectId ?? null,
       itemId,

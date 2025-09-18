@@ -4,10 +4,23 @@ import { PrismaService } from "../prisma/prisma.service";
 @Injectable()
 export class JobsService {
   private readonly logger = new Logger(JobsService.name);
+  private hasJobRunModel: boolean | null = null;
 
   constructor(private readonly prisma: PrismaService) {}
 
   async queue(userId: string, kind: string, details?: any) {
+    if (!this.hasJobRunModelCached()) {
+      this.logger.warn(`jobRun model missing on Prisma client; skipping persisted queue for ${kind}`);
+      return {
+        id: `noop-${Date.now()}`,
+        userId,
+        kind,
+        status: "queued",
+        details,
+        startedAt: new Date(),
+      } as any;
+    }
+
     const job = await this.prisma.jobRun.create({
       data: {
         userId,
@@ -59,5 +72,12 @@ export class JobsService {
         details: { error },
       },
     });
+  }
+
+  private hasJobRunModelCached(): boolean {
+    if (this.hasJobRunModel === null) {
+      this.hasJobRunModel = Boolean((this.prisma as any)?.jobRun?.create);
+    }
+    return this.hasJobRunModel;
   }
 }
