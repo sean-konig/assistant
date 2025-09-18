@@ -10,11 +10,10 @@ import { useUpdateTask } from "@/api/hooks"
 import { useToast } from "@/hooks/use-toast"
 import type { Task, TaskStatus } from "@/lib/types"
 
-const statusColors = {
-  OPEN: "bg-gray-500",
-  IN_PROGRESS: "bg-blue-500",
-  BLOCKED: "bg-red-500",
-  DONE: "bg-green-500",
+const statusColors: Record<TaskStatus, string> = {
+  todo: "bg-gray-500",
+  in_progress: "bg-blue-500",
+  done: "bg-green-500",
 }
 
 const priorityColors = {
@@ -38,11 +37,10 @@ export function TaskKanban({ tasks }: TaskKanbanProps) {
   const updateTask = useUpdateTask()
   const { toast } = useToast()
 
-  const tasksByStatus = {
-    OPEN: tasks.filter((task) => task.status === "OPEN"),
-    IN_PROGRESS: tasks.filter((task) => task.status === "IN_PROGRESS"),
-    BLOCKED: tasks.filter((task) => task.status === "BLOCKED"),
-    DONE: tasks.filter((task) => task.status === "DONE"),
+  const tasksByStatus: Record<TaskStatus, Task[]> = {
+    todo: tasks.filter((task) => task.status === "todo"),
+    in_progress: tasks.filter((task) => task.status === "in_progress"),
+    done: tasks.filter((task) => task.status === "done"),
   }
 
   const handleStatusChange = async (taskId: string, newStatus: TaskStatus) => {
@@ -63,7 +61,7 @@ export function TaskKanban({ tasks }: TaskKanbanProps) {
 
   const TaskCard = ({ task }: { task: Task }) => {
     const isOverdue =
-      task.dueDate && isPast(new Date(task.dueDate)) && !isToday(new Date(task.dueDate)) && task.status !== "DONE"
+      task.dueDate && isPast(new Date(task.dueDate)) && !isToday(new Date(task.dueDate)) && task.status !== "done"
 
     return (
       <Card className="mb-3 hover:shadow-md transition-shadow">
@@ -108,10 +106,9 @@ export function TaskKanban({ tasks }: TaskKanbanProps) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="OPEN">Open</SelectItem>
-                  <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-                  <SelectItem value="BLOCKED">Blocked</SelectItem>
-                  <SelectItem value="DONE">Done</SelectItem>
+                  <SelectItem value="todo">Open</SelectItem>
+                  <SelectItem value="in_progress">In Progress</SelectItem>
+                  <SelectItem value="done">Done</SelectItem>
                 </SelectContent>
               </Select>
             </div>

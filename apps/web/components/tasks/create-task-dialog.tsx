@@ -1,49 +1,49 @@
-"use client"
+"use client";
 
-import type React from "react"
+import type React from "react";
 
-import { useState } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Calendar } from "@/components/ui/calendar"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { CalendarIcon } from "lucide-react"
-import { format } from "date-fns"
-import { useCreateTask } from "@/api/hooks"
-import { useToast } from "@/hooks/use-toast"
-import { cn } from "@/lib/utils"
-import type { Project, TaskStatus } from "@/lib/types"
+import { useState } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { CalendarIcon } from "lucide-react";
+import { format } from "date-fns";
+import { useCreateTaskDynamic } from "@/lib/api/hooks";
+import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
+import type { Project, TaskStatus } from "@/lib/types";
 
 interface CreateTaskDialogProps {
-  children: React.ReactNode
-  projects: Project[]
+  children: React.ReactNode;
+  projects: Project[];
 }
 
 export function CreateTaskDialog({ children, projects }: CreateTaskDialogProps) {
-  const [open, setOpen] = useState(false)
-  const [title, setTitle] = useState("")
-  const [projectCode, setProjectCode] = useState<string>("")
-  const [status, setStatus] = useState<TaskStatus>("OPEN")
-  const [priority, setPriority] = useState<number>(1)
-  const [dueDate, setDueDate] = useState<Date>()
-  const [source] = useState<"MANUAL">("MANUAL")
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState("");
+  const [projectCode, setProjectCode] = useState<string>("");
+  const [status, setStatus] = useState<TaskStatus>("todo");
+  const [priority, setPriority] = useState<number>(1);
+  const [dueDate, setDueDate] = useState<Date>();
+  const [source] = useState<"MANUAL">("MANUAL");
 
-  const createTask = useCreateTask()
-  const { toast } = useToast()
+  const createTask = useCreateTaskDynamic();
+  const { toast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
 
     if (!title.trim()) {
       toast({
         title: "Error",
         description: "Task title is required.",
         variant: "destructive",
-      })
-      return
+      });
+      return;
     }
 
     try {
@@ -52,30 +52,31 @@ export function CreateTaskDialog({ children, projects }: CreateTaskDialogProps) 
         projectCode: projectCode || undefined,
         status,
         priority,
-        dueDate: dueDate?.toISOString(),
+        dueDate: dueDate?.toISOString() ?? null,
         source,
-      })
+      });
 
       toast({
         title: "Task created",
         description: "Your new task has been created successfully.",
-      })
+      });
 
       // Reset form
-      setTitle("")
-      setProjectCode("")
-      setStatus("OPEN")
-      setPriority(1)
-      setDueDate(undefined)
-      setOpen(false)
+      setTitle("");
+      setProjectCode("");
+      setStatus("todo");
+      setPriority(1);
+      setDueDate(undefined);
+      setOpen(false);
     } catch (error) {
+      console.error("Failed to create task", error);
       toast({
         title: "Error",
         description: "Failed to create task. Please try again.",
         variant: "destructive",
-      })
+      });
     }
-  }
+  };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -103,7 +104,7 @@ export function CreateTaskDialog({ children, projects }: CreateTaskDialogProps) 
                 <SelectValue placeholder="Select a project" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">No project</SelectItem>
+                <SelectItem value={null}>No project</SelectItem>
                 {projects.map((project) => (
                   <SelectItem key={project.code} value={project.code}>
                     {project.name} ({project.code})
@@ -121,10 +122,9 @@ export function CreateTaskDialog({ children, projects }: CreateTaskDialogProps) 
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="OPEN">Open</SelectItem>
-                  <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-                  <SelectItem value="BLOCKED">Blocked</SelectItem>
-                  <SelectItem value="DONE">Done</SelectItem>
+                  <SelectItem value="todo">Open</SelectItem>
+                  <SelectItem value="in_progress">In Progress</SelectItem>
+                  <SelectItem value="done">Done</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -174,5 +174,5 @@ export function CreateTaskDialog({ children, projects }: CreateTaskDialogProps) 
         </form>
       </DialogContent>
     </Dialog>
-  )
+  );
 }

@@ -38,3 +38,6 @@ yarn-error.log*
 *.pem
 
 .vscode/mcp.json
+seed.ts
+
+

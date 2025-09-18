@@ -7,13 +7,12 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Calendar, Grid, List } from "lucide-react"
 import { format } from "date-fns"
-import type { Task } from "@/lib/types"
+import type { Task, TaskStatus } from "@/lib/types"
 
-const statusColors = {
-  OPEN: "bg-gray-500",
-  IN_PROGRESS: "bg-blue-500",
-  BLOCKED: "bg-red-500",
-  DONE: "bg-green-500",
+const statusColors: Record<TaskStatus, string> = {
+  todo: "bg-gray-500",
+  in_progress: "bg-blue-500",
+  done: "bg-green-500",
 }
 
 const priorityColors = {
@@ -31,11 +30,10 @@ interface ProjectTasksProps {
 export function ProjectTasks({ tasks, projectCode }: ProjectTasksProps) {
   const [viewMode, setViewMode] = useState<"kanban" | "list">("kanban")
 
-  const tasksByStatus = {
-    OPEN: tasks.filter((task) => task.status === "OPEN"),
-    IN_PROGRESS: tasks.filter((task) => task.status === "IN_PROGRESS"),
-    BLOCKED: tasks.filter((task) => task.status === "BLOCKED"),
-    DONE: tasks.filter((task) => task.status === "DONE"),
+  const tasksByStatus: Record<TaskStatus, Task[]> = {
+    todo: tasks.filter((task) => task.status === "todo"),
+    in_progress: tasks.filter((task) => task.status === "in_progress"),
+    done: tasks.filter((task) => task.status === "done"),
   }
 
   const TaskCard = ({ task }: { task: Task }) => (
@@ -137,10 +135,9 @@ export function ProjectTasks({ tasks, projectCode }: ProjectTasksProps) {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="OPEN">Open</SelectItem>
-                      <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-                      <SelectItem value="BLOCKED">Blocked</SelectItem>
-                      <SelectItem value="DONE">Done</SelectItem>
+                      <SelectItem value="todo">Open</SelectItem>
+                      <SelectItem value="in_progress">In Progress</SelectItem>
+                      <SelectItem value="done">Done</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

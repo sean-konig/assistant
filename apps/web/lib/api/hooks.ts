@@ -3,8 +3,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { ProjectsApi } from "./projects";
+import { TasksApi, TasksFilter, TaskResponse } from "./tasks";
 import type { CreateProjectReq, UpdateProjectReq } from "@repo/types";
-import type { Project as UiProject, Task, Meeting, Note } from "@/lib/types";
+import type { Project as UiProject, Task, Meeting, Note, TaskStatus } from "@/lib/types";
 
 export function useProjects() {
   return useQuery({
@@ -82,16 +83,53 @@ export function useCreateTask(code: string) {
   return useMutation({
     mutationFn: (payload: {
       title: string;
-      status: "OPEN" | "IN_PROGRESS" | "BLOCKED" | "DONE";
+      status: TaskStatus;
       priority: number;
       dueDate?: string | null;
       source?: "MANUAL" | "EMAIL" | "MEETING";
-    }) => ProjectsApi.addTask(code, payload),
+    }) => {
+      const map: Record<TaskStatus, 'OPEN' | 'IN_PROGRESS' | 'DONE'> = {
+        todo: 'OPEN',
+        in_progress: 'IN_PROGRESS',
+        done: 'DONE',
+      };
+      return ProjectsApi.addTask(code, { ...payload, status: map[payload.status] });
+    },
     onSuccess: (task) => {
       qc.setQueryData(["project", code], (prev: any) => {
         if (!prev) return prev;
         return { ...prev, tasks: [task, ...(prev.tasks ?? [])] };
       });
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+    },
+  });
+}
+
+export function useCreateTaskDynamic() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: {
+      title: string;
+      projectCode?: string; // optional; if omitted, create global task
+      status: TaskStatus;
+      priority: number;
+      dueDate?: string | null;
+      source?: "MANUAL" | "EMAIL" | "MEETING";
+    }) => {
+      const { projectCode, ...rest } = payload;
+      const map: Record<TaskStatus, 'OPEN' | 'IN_PROGRESS' | 'DONE'> = {
+        todo: 'OPEN',
+        in_progress: 'IN_PROGRESS',
+        done: 'DONE',
+      };
+      if (projectCode) {
+        return ProjectsApi.addTask(projectCode, { ...rest, status: map[payload.status] });
+      }
+      return TasksApi.create({ ...payload, status: map[payload.status] });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+      qc.invalidateQueries({ queryKey: ["projects"] });
     },
   });
 }
@@ -241,4 +279,108 @@ export function useCoreChatStream() {
   }
 
   return { send, cancel, isStreaming, reply, error };
+}
+
+// Tasks hooks
+export function useTasks(filters: TasksFilter = {}) {
+  return useQuery({
+    queryKey: ["tasks", filters],
+    queryFn: () => TasksApi.list(filters),
+    select: (data) => data.map(mapApiTaskToUiTask),
+  });
+}
+
+export function useTasksToday() {
+  const today = new Date();
+  const todayStr = today.toISOString().split("T")[0];
+
+  return useQuery({
+    queryKey: ["tasks", "today", todayStr],
+    queryFn: async () => {
+      const tasks = await TasksApi.list();
+      // Filter to tasks due today
+      return tasks
+        .filter((task) => {
+          if (!task.dueDate) return false;
+          const dueDate = new Date(task.dueDate);
+          return dueDate.toDateString() === today.toDateString();
+        })
+        .map(mapApiTaskToUiTask);
+    },
+  });
+}
+
+export function useTasksUpcoming(days: number) {
+  const today = new Date();
+  const endDate = new Date();
+  endDate.setDate(today.getDate() + days);
+
+  return useQuery({
+    queryKey: ["tasks", "upcoming", days],
+    queryFn: async () => {
+      const tasks = await TasksApi.list();
+      // Filter to tasks due within the specified days
+      return tasks
+        .filter((task) => {
+          if (!task.dueDate) return false;
+          const dueDate = new Date(task.dueDate);
+          return dueDate >= today && dueDate <= endDate;
+        })
+        .map(mapApiTaskToUiTask);
+    },
+  });
+}
+
+export function useRescoreTasks() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (project?: string) => TasksApi.rescore(project),
+    onSuccess: () => {
+      // Invalidate all tasks queries to refetch updated priorities
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+    },
+  });
+}
+
+// Helper function to map API task response to UI Task type
+function mapApiTaskToUiTask(apiTask: TaskResponse): Task {
+  return {
+    id: apiTask.id,
+    projectCode: apiTask.projectCode ?? undefined,
+    title: apiTask.title,
+    status: mapApiStatusToUiStatus(apiTask.status),
+    dueDate: apiTask.dueDate,
+    priority: mapPriorityBucketToNumber(apiTask.priorityBucket),
+    source: "MANUAL", // Default since API doesn't have this field yet
+    updatedAt: apiTask.updatedAt,
+  };
+}
+
+function mapApiStatusToUiStatus(apiStatus: string): TaskStatus {
+  switch (apiStatus) {
+    case "todo":
+      return "todo";
+    case "in_progress":
+      return "in_progress";
+    case "done":
+      return "done";
+    default:
+      return "todo";
+  }
+}
+
+function mapPriorityBucketToNumber(bucket?: string | null): number {
+  if (!bucket) return 0;
+  switch (bucket) {
+    case "P0":
+      return 3; // Highest priority
+    case "P1":
+      return 2;
+    case "P2":
+      return 1;
+    case "P3":
+      return 0;
+    default:
+      return 0;
+  }
 }

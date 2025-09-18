@@ -7,7 +7,7 @@ export class ProjectNotesService {
 
   async getLatestNoteId(projectId: string): Promise<string | null> {
     const row = (await this.prisma.$queryRawUnsafe(
-      'SELECT id, raw FROM items WHERE "projectId" = $1 AND type = $2 ORDER BY "createdAt" DESC LIMIT 1',
+      'SELECT id, raw FROM items WHERE "projectId" = $1 AND type = $2::"ItemType" ORDER BY "createdAt" DESC LIMIT 1',
       projectId,
       'NOTE',
     )) as any[];
@@ -26,7 +26,7 @@ export class ProjectNotesService {
     const id = idRow[0]?.id ?? String(Math.random()).slice(2);
     const now = new Date();
     await this.prisma.$executeRawUnsafe(
-      'INSERT INTO items (id,"userId","projectId",type,title,body,raw,"occurredAt","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9)',
+      'INSERT INTO items (id,"userId","projectId",type,title,body,raw,"occurredAt","createdAt","updatedAt") VALUES ($1,$2,$3,$4::"ItemType",$5,$6,$7,$8,$9,$9)',
       id,
       userId,
       projectId,
@@ -63,4 +63,3 @@ export class ProjectNotesService {
       .trim();
   }
 }
-

@@ -142,7 +142,7 @@ export class IngestProcessor {
         const embeddings = await this.llm.embed([chunk.text]);
         const embedding = embeddings[0];
         if (!embedding) {
-          throw new Error('Failed to generate embedding');
+          throw new Error("Failed to generate embedding");
         }
         await this.embeddings.indexVector(
           userId,
@@ -196,10 +196,7 @@ Only output JSON.`;
     const userPrompt = `Extract tasks from this text:\n\n${text}`;
 
     try {
-      const response = await this.llm.chatMarkdown(
-        systemPrompt, 
-        userPrompt
-      );
+      const response = await this.llm.chatMarkdown(systemPrompt, userPrompt);
 
       if (!response) {
         return [];
@@ -238,7 +235,7 @@ Only output JSON.`;
     this.logger.log(`Saved ${tasks.length} tasks`);
   }
 
-  private async prioritizeTasks(userId: string, projectId: string | null): Promise<void> {
+  async prioritizeTasks(userId: string, projectId: string | null): Promise<void> {
     if (!this.prioritizationConfig) {
       this.logger.warn("No prioritization config loaded, skipping task prioritization");
       return;
@@ -277,10 +274,7 @@ ${JSON.stringify(this.prioritizationConfig, null, 2)}`;
     const userPrompt = `Score and bucket these tasks:\n\n${JSON.stringify(taskInputs, null, 2)}`;
 
     try {
-      const response = await this.llm.chatMarkdown(
-        systemPrompt, 
-        userPrompt
-      );
+      const response = await this.llm.chatMarkdown(systemPrompt, userPrompt);
 
       if (!response) {
         this.logger.warn("No prioritization response received");
@@ -315,7 +309,7 @@ ${JSON.stringify(this.prioritizationConfig, null, 2)}`;
 
   private async updateDailyDigest(userId: string, projectId: string | null): Promise<void> {
     if (!projectId) {
-      this.logger.warn('Cannot update daily digest without projectId');
+      this.logger.warn("Cannot update daily digest without projectId");
       return;
     }
 
@@ -363,10 +357,7 @@ Open Tasks (${openTasks.length}):
 ${openTasks.map((task) => `- [${task.priorityBucket || "P?"}] ${task.title} (Score: ${task.priorityScore || "N/A"})`).join("\n")}`;
 
     try {
-      const response = await this.llm.chatMarkdown(
-        systemPrompt, 
-        userPrompt
-      );
+      const response = await this.llm.chatMarkdown(systemPrompt, userPrompt);
 
       const summaryMd = response || "No digest generated";
 

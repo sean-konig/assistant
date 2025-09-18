@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 
 const navigation = [
@@ -77,6 +77,10 @@ export function AppShell({ children }: AppShellProps) {
 
         {/* Mobile menu content (Sheet) */}
         <SheetContent side="left" className="w-72">
+          {/* Hidden title to satisfy Radix Dialog a11y requirement */}
+          <SheetHeader className="sr-only">
+            <SheetTitle>Mobile Navigation</SheetTitle>
+          </SheetHeader>
           <div className="flex h-16 shrink-0 items-center">
             <h1 className="text-xl font-semibold">Exec Assistant</h1>
           </div>

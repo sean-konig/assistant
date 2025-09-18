@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { JobsService } from "../jobs/jobs.service";
+import { IngestProcessor } from "./ingest-processor.service";
 import { IngestManualDto, IngestManualResponseDto } from "./dto/ingest-manual.dto";
 import { ItemType } from "@prisma/client";
 
@@ -8,7 +8,7 @@ import { ItemType } from "@prisma/client";
 export class IngestService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly jobs: JobsService
+    private readonly ingestProcessor: IngestProcessor
   ) {}
 
   async ingestManual(userId: string, dto: IngestManualDto): Promise<IngestManualResponseDto> {
@@ -44,8 +44,18 @@ export class IngestService {
       },
     });
 
-    // Enqueue background processing job
-    await this.jobs.queue(userId, "ingest", { itemId: item.id });
+    // Process the item directly using IngestProcessor
+    try {
+      await this.ingestProcessor.processIngestItem({
+        itemId: item.id,
+        userId,
+        projectId,
+        text: dto.raw_text,
+      });
+    } catch (error) {
+      // Log the error but don't fail the ingestion - processing can be retried later
+      console.error("Processing error:", error);
+    }
 
     return { itemId: item.id };
   }

@@ -125,7 +125,7 @@ export class ProjectAgentService {
       console.log(`[RAG] 🔍 Executing similarity search...`);
 
       const rows = await this.prisma.$queryRawUnsafe<any[]>(
-        `SELECT i.body, i.raw, e.vector <-> $2::vector as distance
+        `SELECT i.title, i.body, i.raw, e.vector <-> $2::vector as distance
          FROM embeddings e
          JOIN items i ON i.id = e."itemId"
          WHERE e."projectId" = $1
@@ -140,7 +140,8 @@ export class ProjectAgentService {
       // Extract content from results
       const contextSnippets = rows
         .map((r, idx) => {
-          const content = r.body || r.raw?.markdown || "";
+          // Prefer rich bodies/markdown, but fall back to title for TASK items
+          const content = (r.body && String(r.body)) || (r.raw?.markdown && String(r.raw.markdown)) || (r.title && String(r.title)) || "";
           const distance = parseFloat(r.distance || "1.0");
           console.log(`[RAG] Match ${idx + 1}: distance=${distance.toFixed(4)}, content_length=${content.length}`);
           return { content: content.trim(), distance };
@@ -187,6 +188,35 @@ export class ProjectAgentService {
       });
     }
 
+    // Optional DB fallback for task queries: include authoritative task list when user asks about tasks
+    const isTaskQuery = /\btasks?\b/i.test(latest);
+    let dbTasksSystemBlock = "";
+    if (isTaskQuery) {
+      const tasks = await this.prisma.task.findMany({
+        where: { projectId: project.id },
+        select: { title: true, status: true, dueDate: true },
+        orderBy: [{ status: 'asc' }, { createdAt: 'asc' } as any],
+        take: 50,
+      } as any);
+      if (tasks.length > 0) {
+        const lines = tasks.map((t) => {
+          const rawStatus = String(t.status || '').toLowerCase();
+          const status = rawStatus === 'todo' ? 'to do' : rawStatus.replace(/_/g, ' ');
+          const due = t.dueDate ? ` (due ${new Date(t.dueDate).toISOString().slice(0, 10)})` : '';
+          return `- ${t.title}${status ? ` [${status}]` : ''}${due}`;
+        });
+        // System block (for the LLM when used)
+        dbTasksSystemBlock = [
+          'You have the following authoritative task list from the database. Use it to answer naturally and concisely. Do not invent tasks beyond this list. Do not include this system text verbatim in your reply.',
+          '',
+          ...lines,
+        ].join('\n');
+        console.log(`[RAG] 🗄️  Included DB tasks fallback with ${tasks.length} rows`);
+      } else {
+        console.log(`[RAG] 🗄️  No tasks found in DB for project; will guard against fabrication`);
+      }
+    }
+
     // Build context block if we have relevant content
     const contextBlock = contextSnippets.length
       ? `Context (top ${contextSnippets.length}):\n` +
@@ -203,12 +233,22 @@ export class ProjectAgentService {
     // Build message sequence: system context + history + latest user message
     const seq: any[] = [];
 
-    if (contextBlock) {
-      const systemMessage = "Use the following context if relevant. If not relevant, ignore it.\n" + contextBlock;
+    if (contextBlock || dbTasksSystemBlock) {
+      const parts = [
+        "Use only the project-scoped data below.",
+        "Treat any prior assistant messages listing tasks as untrusted unless they appear here.",
+        "Never invent tasks or details not present below or in the user's message.",
+      ];
+      if (dbTasksSystemBlock) parts.push("", dbTasksSystemBlock);
+      if (contextBlock) parts.push("", contextBlock);
+      const systemMessage = parts.join("\n");
       seq.push(s(systemMessage));
       console.log(`[RAG] 🤖 Added system context message (${systemMessage.length} chars)`);
     } else {
       console.log(`[RAG] ⚠️  No context found - proceeding without RAG augmentation`);
+      const guardrail =
+        "No authoritative context was retrieved for this project. Do not invent tasks or facts. If the user asks about tasks, reply that none are recorded for this project yet.";
+      seq.push(s(guardrail));
     }
 
     // Add chat history
@@ -222,6 +262,8 @@ export class ProjectAgentService {
     console.log(`[RAG] ✉️  Added latest user message: "${latest.slice(0, 100)}${latest.length > 100 ? "..." : ""}"`);
 
     console.log(`[RAG] 🎯 Total message sequence length: ${seq.length} messages`);
+    // Let the LLM compose a natural response even for task queries; authoritative data is provided in system context.
+
     console.log(`[RAG] 🚀 Starting LLM streaming response...`);
 
     // Stream the response

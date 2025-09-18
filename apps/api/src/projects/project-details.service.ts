@@ -24,16 +24,20 @@ export class ProjectDetailsService {
       }));
     const tasks = items
       .filter((i) => (i as any).raw?.kind === 'TASK')
-      .map((i) => ({
-        id: i.id,
-        projectCode: undefined,
-        title: i.title ?? i.body ?? '',
-        status: ((i as any).raw?.status ?? 'OPEN') as 'OPEN' | 'IN_PROGRESS' | 'BLOCKED' | 'DONE',
-        dueDate: (i as any).raw?.dueDate ?? null,
-        priority: Number((i as any).raw?.priority ?? 0),
-        source: ((i as any).raw?.source ?? 'MANUAL') as 'MANUAL' | 'EMAIL' | 'MEETING',
-        updatedAt: i.updatedAt.toISOString(),
-      }));
+      .map((i) => {
+        const rawStatus = ((i as any).raw?.status ?? 'OPEN') as 'OPEN' | 'IN_PROGRESS' | 'BLOCKED' | 'DONE';
+        const status = rawStatus === 'DONE' ? 'done' : rawStatus === 'IN_PROGRESS' || rawStatus === 'BLOCKED' ? 'in_progress' : 'todo';
+        return {
+          id: i.id,
+          projectCode: undefined,
+          title: i.title ?? i.body ?? '',
+          status,
+          dueDate: (i as any).raw?.dueDate ?? null,
+          priority: Number((i as any).raw?.priority ?? 0),
+          source: ((i as any).raw?.source ?? 'MANUAL') as 'MANUAL' | 'EMAIL' | 'MEETING',
+          updatedAt: i.updatedAt.toISOString(),
+        };
+      });
     const meetings: any[] = [];
     const chat = items
       .filter((i) => (i as any).raw?.kind === 'CHAT')
@@ -42,4 +46,3 @@ export class ProjectDetailsService {
     return { notes, tasks, meetings, chat };
   }
 }
-

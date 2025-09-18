@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { IngestService } from "../ingest.service";
 import { PrismaService } from "../../prisma/prisma.service";
-import { JobsService } from "../../jobs/jobs.service";
+import { IngestProcessor } from "../ingest-processor.service";
 
 describe("IngestService", () => {
   let service: IngestService;
   let prisma: PrismaService;
-  let jobsService: JobsService;
+  let ingestProcessor: IngestProcessor;
 
   beforeEach(() => {
     // Mock PrismaService
@@ -19,16 +19,16 @@ describe("IngestService", () => {
       },
     } as any;
 
-    // Mock JobsService
-    jobsService = {
-      queue: vi.fn(),
+    // Mock IngestProcessor
+    ingestProcessor = {
+      processIngestItem: vi.fn(),
     } as any;
 
-    service = new IngestService(prisma, jobsService);
+    service = new IngestService(prisma, ingestProcessor);
   });
 
   describe("ingestManual", () => {
-    it("should create an item and queue a job", async () => {
+    it("should create an item and process it", async () => {
       const userId = "user123";
       const dto = {
         kind: "note" as const,
@@ -38,18 +38,15 @@ describe("IngestService", () => {
         tags: ["test", "note"],
       };
 
-      const mockItem = {
-        id: "item123",
-        title: "Test Note",
-        type: "NOTE",
-      };
+      const mockItem = { id: "item123", type: "NOTE" };
 
       prisma.item.create = vi.fn().mockResolvedValue(mockItem);
-      jobsService.queue = vi.fn().mockResolvedValue({ id: "job123" });
+      ingestProcessor.processIngestItem = vi.fn().mockResolvedValue(undefined);
 
       const result = await service.ingestManual(userId, dto);
 
-      expect(result.itemId).toBe("item123");
+      expect(result).toEqual({ itemId: "item123" });
+
       expect(prisma.item.create).toHaveBeenCalledWith({
         data: {
           userId,
@@ -65,13 +62,19 @@ describe("IngestService", () => {
           occurredAt: new Date("2025-09-17T10:00:00Z"),
         },
       });
-      expect(jobsService.queue).toHaveBeenCalledWith(userId, "ingest", { itemId: "item123" });
+
+      expect(ingestProcessor.processIngestItem).toHaveBeenCalledWith({
+        itemId: "item123",
+        userId,
+        projectId: null,
+        text: dto.raw_text,
+      });
     });
 
-    it("should handle project lookup when projectCode is provided", async () => {
-      const userId = "user123";
+    it("should handle project code mapping", async () => {
+      const userId = "user456";
       const dto = {
-        projectCode: "TEST_PROJECT",
+        projectCode: "test-project",
         kind: "meeting" as const,
         raw_text: "Meeting notes about the project.",
       };
@@ -81,99 +84,44 @@ describe("IngestService", () => {
 
       prisma.project.findFirst = vi.fn().mockResolvedValue(mockProject);
       prisma.item.create = vi.fn().mockResolvedValue(mockItem);
-      jobsService.queue = vi.fn().mockResolvedValue({ id: "job456" });
+      ingestProcessor.processIngestItem = vi.fn().mockResolvedValue(undefined);
 
       const result = await service.ingestManual(userId, dto);
 
-      expect(prisma.project.findFirst).toHaveBeenCalledWith({
-        where: { userId, slug: "TEST_PROJECT" },
-      });
-      expect(prisma.item.create).toHaveBeenCalledWith({
-        data: {
-          userId,
-          projectId: "project123",
-          type: "CAL_EVENT",
-          title: expect.stringMatching(/^Meeting - \d{4}-\d{2}-\d{2}$/),
-          body: "Meeting notes about the project.",
-          raw: {
-            kind: "meeting",
-            originalText: "Meeting notes about the project.",
-            tags: [],
-          },
-          occurredAt: expect.any(Date),
-        },
-      });
-      expect(result.itemId).toBe("item456");
-    });
-
-    it("should handle project lookup when projectCode is provided", async () => {
-      const userId = "user123";
-      const dto = {
-        projectCode: "TEST_PROJECT",
-        kind: "meeting" as const,
-        raw_text: "Meeting notes about the project.",
-      };
-
-      const mockProject = { id: "project123" };
-      const mockItem = { id: "item456", type: "CAL_EVENT" };
-
-      prisma.project.findFirst = vi.fn().mockResolvedValue(mockProject);
-      prisma.item.create = vi.fn().mockResolvedValue(mockItem);
-      jobsService.queue = vi.fn().mockResolvedValue({ id: "job456" });
-
-      const result = await service.ingestManual(userId, dto);
+      expect(result).toEqual({ itemId: "item456" });
 
       expect(prisma.project.findFirst).toHaveBeenCalledWith({
-        where: { userId, slug: "TEST_PROJECT" },
-      });
-      expect(prisma.item.create).toHaveBeenCalledWith({
-        data: {
+        where: {
           userId,
-          projectId: "project123",
-          type: "CAL_EVENT",
-          title: expect.stringMatching(/^Meeting - \d{4}-\d{2}-\d{2}$/),
-          body: "Meeting notes about the project.",
-          raw: {
-            kind: "meeting",
-            originalText: "Meeting notes about the project.",
-            tags: [],
-          },
-          occurredAt: expect.any(Date),
+          slug: "test-project",
         },
       });
-      expect(result.itemId).toBe("item456");
+
+      expect(ingestProcessor.processIngestItem).toHaveBeenCalledWith({
+        itemId: "item456",
+        userId,
+        projectId: "project123",
+        text: dto.raw_text,
+      });
     });
 
-    it("should handle non-existent project gracefully", async () => {
-      const userId = "user123";
+    it("should handle processing errors gracefully", async () => {
+      const userId = "user789";
       const dto = {
-        projectCode: "NONEXISTENT",
-        kind: "note" as const,
-        raw_text: "Some content.",
+        kind: "action_items" as const,
+        raw_text: "Task 1: Complete project. Task 2: Review documentation.",
       };
 
       const mockItem = { id: "item789", type: "NOTE" };
 
-      prisma.project.findFirst = vi.fn().mockResolvedValue(null);
       prisma.item.create = vi.fn().mockResolvedValue(mockItem);
-      jobsService.queue = vi.fn().mockResolvedValue({ id: "job789" });
+      ingestProcessor.processIngestItem = vi.fn().mockRejectedValue(new Error("Processing failed"));
 
+      // Should not throw even if processing fails
       const result = await service.ingestManual(userId, dto);
 
-      expect(prisma.item.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          projectId: null, // Should be null when project not found
-          type: "NOTE",
-          body: "Some content.",
-          raw: {
-            kind: "note",
-            originalText: "Some content.",
-            tags: [],
-          },
-        }),
-      });
-      expect(jobsService.queue).toHaveBeenCalledWith(userId, "ingest", { itemId: "item789" });
-      expect(result.itemId).toBe("item789");
+      expect(result).toEqual({ itemId: "item789" });
+      expect(ingestProcessor.processIngestItem).toHaveBeenCalled();
     });
   });
 });

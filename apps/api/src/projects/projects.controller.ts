@@ -10,25 +10,32 @@ import {
   Req,
   BadRequestException,
   Patch,
+  UseGuards,
 } from "@nestjs/common";
-import { ApiTags } from "@nestjs/swagger";
+import { ApiTags, ApiBearerAuth } from "@nestjs/swagger";
 import { ProjectsService } from "./projects.service";
 import type { CreateProjectReq, Project } from "@repo/types";
 import { ProjectAgentService } from "../agents/project-agent.service";
 import { ProjectNotesService } from "./project-notes.service";
-import { ProjectTasksService } from "./project-tasks.service";
+// import { ProjectTasksService } from "./project-tasks.service"; // superseded by TasksService.createTask
+import { TasksService } from "../tasks/tasks.service";
 import { ProjectChatService } from "./project-chat.service";
 import { ProjectDetailsService } from "./project-details.service";
 import { createSse } from "../common/http/sse";
+import { SupabaseJwtGuard } from "../common/guards/supabase-jwt.guard";
+import { GetUser } from "../common/decorators/get-user.decorator";
 
 @ApiTags("projects")
+// @ApiBearerAuth("bearer")  // Temporarily disabled for testing
+// @UseGuards(SupabaseJwtGuard)  // Temporarily disabled for testing
 @Controller("projects")
 export class ProjectsController {
   constructor(
     @Inject(ProjectsService) private readonly projects: ProjectsService,
     @Inject(ProjectAgentService) private readonly projAgent: ProjectAgentService,
     @Inject(ProjectNotesService) private readonly notes: ProjectNotesService,
-    @Inject(ProjectTasksService) private readonly tasks: ProjectTasksService,
+    // @Inject(ProjectTasksService) private readonly legacyProjectTasks: ProjectTasksService,
+    @Inject(TasksService) private readonly tasksSvc: TasksService,
     @Inject(ProjectChatService) private readonly chatSvc: ProjectChatService,
     @Inject(ProjectDetailsService) private readonly details: ProjectDetailsService
   ) {}
@@ -57,19 +64,29 @@ export class ProjectsController {
 
   @Post()
   async create(@Body() dto: CreateProjectReq): Promise<Project> {
+    // Hardcode test user for development (no auth)
+    const testUserId = "seankonig";
+
     const slug = (dto.code ?? dto.name)
       .toLowerCase()
       .trim()
       .replace(/[^a-z0-9\s-]/g, "")
       .replace(/\s+/g, "-")
       .replace(/-+/g, "-");
-    const created = await this.projects.create("seank", { name: dto.name, slug, description: dto.description ?? null });
+    const created = await this.projects.create(testUserId, {
+      name: dto.name,
+      slug,
+      description: dto.description ?? null,
+    });
     return this.projects.mapToProject(created);
   }
 
   @Get()
   async list(): Promise<Project[]> {
-    const rows = await this.projects.listLocal();
+    // Hardcode test user for development (no auth)
+    const testUserId = "seankonig";
+
+    const rows = await this.projects.list(testUserId);
     return rows.map((p) => this.projects.mapToProject(p));
   }
 
@@ -94,7 +111,7 @@ export class ProjectsController {
           .replace(/\s+/g, "-")
           .replace(/-+/g, "-")
       : undefined;
-    const userId = "seank"; // TODO: auth user
+    const userId = "seankonig"; // TODO: auth user
     const updated = await this.projects.updateBySlug(userId, code, {
       name: body.name,
       slug: newSlug,
@@ -141,7 +158,15 @@ export class ProjectsController {
     }
   ) {
     const project = await this.projects.getLocalBySlug(code);
-    return this.tasks.create(project.userId, project.id, payload);
+    // Single path: delegate to TasksService.createTask so downstream embedding/indexing is consistent
+    return this.tasksSvc.createTask(project.userId, {
+      title: payload.title,
+      status: payload.status,
+      priority: payload.priority,
+      dueDate: payload.dueDate ?? undefined,
+      projectCode: code,
+      source: payload.source,
+    } as any);
   }
 
   @Post(":code/chat")

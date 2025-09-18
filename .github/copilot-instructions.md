@@ -51,4 +51,12 @@ This is a pnpm + Turborepo monorepo. The backend lives in `apps/api` (NestJS + F
 - For any new embeddings or search endpoints, enforce 1536‑dim vectors to match the column.
 - Keep HTTP routes consistent with existing style: resource path + action (e.g., `POST /digests/generate`, `POST /jobs/queue`).
 
+### Testing and development
+
+- **NEVER create standalone test scripts** (e.g., `test-*.js`, `test-*.ts`). These are pointless and clutter the codebase.
+- Write proper unit tests using Vitest in the `test/` directory or alongside modules with `.spec.ts` files.
+- Use the built-in NestJS testing utilities and follow existing test patterns in the codebase.
+- For API testing, use the existing e2e test framework in `apps/api/test/` directory.
+- For quick verification during development, use the API endpoints directly via HTTP clients or the web UI.
+
 Questions or unclear areas: Do you want Swagger enabled in dev by default, and should `/embeddings/index` enforce 1536 dims (controller default still mentions 768)? I can align docs/code if you confirm the intended dimension and default models.

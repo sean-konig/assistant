@@ -8,7 +8,9 @@ export class ProjectsService {
 
   async create(userId: string, data: { name: string; slug: string; description?: string | null }) {
     try {
-      return await this.prisma.project.create({ data: { name: data.name, slug: data.slug, description: data.description ?? null, userId } });
+      return await this.prisma.project.create({
+        data: { name: data.name, slug: data.slug, description: data.description ?? null, userId },
+      });
     } catch (e: any) {
       if (e.code === "P2002") throw new ConflictException("Project slug already exists");
       throw e;
@@ -21,19 +23,26 @@ export class ProjectsService {
   }
 
   async listLocal() {
-    const userId = "seank"; // TODO: replace with real auth
+    const userId = "seankonig"; // TODO: replace with real auth
     return this.list(userId);
   }
 
   async getLocalBySlug(slug: string) {
-    const userId = "seank"; // TODO: replace with real auth
+    const userId = "seankonig"; // TODO: replace with real auth
     const row = await this.prisma.project.findFirst({ where: { userId, slug } });
     if (!row) throw new NotFoundException("Project not found");
     return row;
   }
 
   // Map DB row -> shared API shape
-  mapToProject(row: { id: string; name: string; slug: string; description?: string | null; createdAt: Date; updatedAt: Date }): ProjectType {
+  mapToProject(row: {
+    id: string;
+    name: string;
+    slug: string;
+    description?: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }): ProjectType {
     return {
       id: row.id,
       name: row.name,
@@ -42,14 +51,17 @@ export class ProjectsService {
       status: "ACTIVE",
       riskScore: 0,
       openTasks: null,
-      owner: null,
       nextDueDate: null,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };
   }
 
-  async updateBySlug(userId: string, slug: string, data: { name?: string; slug?: string; description?: string | null }) {
+  async updateBySlug(
+    userId: string,
+    slug: string,
+    data: { name?: string; slug?: string; description?: string | null }
+  ) {
     const existing = await this.prisma.project.findFirst({ where: { userId, slug } });
     if (!existing) throw new NotFoundException("Project not found");
     const updated = await this.prisma.project.update({
@@ -62,5 +74,4 @@ export class ProjectsService {
     });
     return updated;
   }
-
 }

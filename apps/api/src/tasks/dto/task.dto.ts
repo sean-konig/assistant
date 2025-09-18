@@ -12,6 +12,10 @@ export class GetTasksQueryDto {
   @IsOptional()
   @IsIn(["todo", "in_progress", "done"])
   status?: "todo" | "in_progress" | "done";
+
+  @IsOptional()
+  @IsString()
+  limit?: string;
 }
 
 export class RescoreTasksQueryDto {
@@ -36,8 +40,66 @@ export interface TaskResponseDto {
   reason?: any;
   signals: string[];
   projectId?: string;
+  projectCode?: string;
+  sourceItemId?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export class CreateTaskDto {
+  @IsString()
+  title!: string;
+
+  @IsOptional()
+  @IsString()
+  projectCode?: string; // optional slug
+
+  @IsIn(["OPEN", "IN_PROGRESS", "BLOCKED", "DONE"])
+  status!: "OPEN" | "IN_PROGRESS" | "BLOCKED" | "DONE";
+
+  @IsOptional()
+  priority?: number; // 0-3 UI scale
+
+  @IsOptional()
+  @IsDateString()
+  dueDate?: string | null;
+
+  @IsOptional()
+  @IsIn(["MANUAL", "EMAIL", "MEETING"]) 
+  source?: "MANUAL" | "EMAIL" | "MEETING";
+
+  @IsOptional()
+  @IsArray()
+  signals?: string[];
+}
+
+export class UpdateTaskDto {
+  @IsOptional()
+  @IsString()
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string | null;
+
+  @IsOptional()
+  @IsString()
+  projectCode?: string; // optional slug
+
+  @IsOptional()
+  @IsIn(["OPEN", "IN_PROGRESS", "BLOCKED", "DONE"])
+  status?: "OPEN" | "IN_PROGRESS" | "BLOCKED" | "DONE";
+
+  @IsOptional()
+  priority?: number; // 0-3 UI scale
+
+  @IsOptional()
+  @IsDateString()
+  dueDate?: string | null;
+
+  @IsOptional()
+  @IsArray()
+  signals?: string[];
 }
 
 // Types for agent processing

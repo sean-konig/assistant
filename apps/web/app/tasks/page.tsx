@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Search, Grid, List, Plus } from "lucide-react";
-import { useTasksToday, useTasksUpcoming, useProjects } from "@/api/hooks";
+import { useTasks, useRescoreTasks, useProjects } from "@/lib/api/hooks";
+import { RefreshCw } from "lucide-react";
 import { isToday, isTomorrow, isPast } from "date-fns";
 import { TaskKanban } from "@/components/tasks/task-kanban";
 import { TaskList } from "@/components/tasks/task-list";
@@ -19,9 +20,10 @@ const CreateTaskDialog = dynamic(
 import type { Task, TaskStatus } from "@/lib/types";
 
 export default function TasksPage() {
-  const { data: todayTasks = [] } = useTasksToday();
-  const { data: upcomingTasks = [] } = useTasksUpcoming(30); // Get tasks for next 30 days
+  // Fetch all tasks (server already supports optional filters)
+  const { data: allTasks = [] } = useTasks();
   const { data: projects = [] } = useProjects();
+  const rescoreTasks = useRescoreTasks();
 
   const [viewMode, setViewMode] = useState<"kanban" | "list">("kanban");
   const [searchQuery, setSearchQuery] = useState("");
@@ -29,14 +31,6 @@ export default function TasksPage() {
   const [projectFilter, setProjectFilter] = useState<string>("ALL");
   const [priorityFilter, setPriorityFilter] = useState<number | "ALL">("ALL");
   const [dueDateFilter, setDueDateFilter] = useState<"ALL" | "TODAY" | "TOMORROW" | "OVERDUE" | "THIS_WEEK">("ALL");
-
-  // Combine all tasks
-  const allTasks = [...todayTasks, ...upcomingTasks].reduce((unique, task) => {
-    if (!unique.find((t) => t.id === task.id)) {
-      unique.push(task);
-    }
-    return unique;
-  }, [] as Task[]);
 
   // Apply filters
   const filteredTasks = allTasks.filter((task) => {
@@ -72,10 +66,10 @@ export default function TasksPage() {
 
   const taskStats = {
     total: allTasks.length,
-    open: allTasks.filter((t) => t.status === "OPEN").length,
-    inProgress: allTasks.filter((t) => t.status === "IN_PROGRESS").length,
-    blocked: allTasks.filter((t) => t.status === "BLOCKED").length,
-    done: allTasks.filter((t) => t.status === "DONE").length,
+    open: allTasks.filter((t) => t.status === "todo").length,
+    inProgress: allTasks.filter((t) => t.status === "in_progress").length,
+    blocked: 0,
+    done: allTasks.filter((t) => t.status === "done").length,
     overdue: allTasks.filter(
       (t) => t.dueDate && isPast(new Date(t.dueDate)) && !isToday(new Date(t.dueDate)) && t.status !== "DONE"
     ).length,
@@ -88,12 +82,18 @@ export default function TasksPage() {
           <h1 className="text-2xl font-bold tracking-tight">Tasks</h1>
           <p className="text-muted-foreground">Manage and track all your tasks</p>
         </div>
-        <CreateTaskDialog projects={projects}>
-          <Button>
-            <Plus className="h-4 w-4 mr-2" />
-            New Task
+        <div className="flex gap-2">
+          <Button onClick={() => rescoreTasks.mutate()} disabled={rescoreTasks.isPending} variant="outline">
+            <RefreshCw className={`h-4 w-4 mr-2 ${rescoreTasks.isPending ? "animate-spin" : ""}`} />
+            {rescoreTasks.isPending ? "Rescoring..." : "Rescore Tasks"}
           </Button>
-        </CreateTaskDialog>
+          <CreateTaskDialog projects={projects}>
+            <Button>
+              <Plus className="h-4 w-4 mr-2" />
+              New Task
+            </Button>
+          </CreateTaskDialog>
+        </div>
       </div>
 
       {/* Task Stats */}
@@ -156,10 +156,9 @@ export default function TasksPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">All Status</SelectItem>
-                <SelectItem value="OPEN">Open</SelectItem>
-                <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-                <SelectItem value="BLOCKED">Blocked</SelectItem>
-                <SelectItem value="DONE">Done</SelectItem>
+                <SelectItem value="todo">Open</SelectItem>
+                <SelectItem value="in_progress">In Progress</SelectItem>
+                <SelectItem value="done">Done</SelectItem>
               </SelectContent>
             </Select>
 

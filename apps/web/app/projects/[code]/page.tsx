@@ -1,9 +1,7 @@
 "use client";
 
-import { use, useEffect, useMemo, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { Send } from "lucide-react";
+import { use, useEffect, useRef, useState } from "react";
+
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -46,22 +44,31 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
   const [md, setMd] = useState("");
   const [summary, setSummary] = useState("");
   const [noteType, setNoteType] = useState("GENERAL");
-  const [messages, setMessages] = useState<Array<{ id?: string; role: 'user'|'assistant'; content: string; createdAt?: string }>>([]);
+  const [messages, setMessages] = useState<
+    Array<{ id?: string; role: "user" | "assistant"; content: string; createdAt?: string }>
+  >([]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   // Sync server messages into local thread
   useEffect(() => {
     if (project?.chat) {
-      setMessages(project.chat.map((m: any) => ({ id: m.id, role: m.role, content: m.content, createdAt: m.createdAt })));
+      setMessages(
+        project.chat.map((m: { id?: string; role: "user" | "assistant"; content: string; createdAt?: string }) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          createdAt: m.createdAt,
+        }))
+      );
     }
   }, [project?.chat]);
 
   // Auto-scroll on new tokens or message
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages.length, chat.reply]);
 
-  const canSend = useMemo(() => !chat.isStreaming, [chat.isStreaming]);
+  //const canSend = useMemo(() => !chat.isStreaming, [chat.isStreaming]);
 
   if (isLoading) {
     return (
@@ -79,7 +86,7 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
     return (
       <div className="text-center py-12">
         <h1 className="text-2xl font-bold mb-2">Project Not Found</h1>
-        <p className="text-muted-foreground">The project with code "{code}" could not be found.</p>
+        <p className="text-muted-foreground">The project with code &quot;{code}&quot; could not be found.</p>
       </div>
     );
   }
@@ -116,7 +123,9 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
         <div className="flex gap-2">
           <Sheet>
             <SheetTrigger asChild>
-              <Button variant="default" size="sm">Chat</Button>
+              <Button variant="default" size="sm">
+                Chat
+              </Button>
             </SheetTrigger>
             <SheetContent side="right" className="sm:max-w-xl">
               <SheetHeader>
@@ -124,15 +133,15 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
               </SheetHeader>
               <div className="flex-1 min-h-0 p-2">
                 <ChatPanel
-                  context={`### ${project.name}\n${project.description ? project.description : '_No description yet._'}`}
+                  context={`### ${project.name}\n${project.description ? project.description : "_No description yet._"}`}
                   contextKey={project.code}
                   messages={messages as ChatMessage[]}
                   streaming={chat.isStreaming}
                   streamText={chat.reply}
                   onSend={async (text) => {
-                    setMessages((prev) => [...prev, { role: 'user', content: text }]);
+                    setMessages((prev) => [...prev, { role: "user", content: text }]);
                     const final = await chat.send(text);
-                    setMessages((prev) => [...prev, { role: 'assistant', content: final }]);
+                    setMessages((prev) => [...prev, { role: "assistant", content: final }]);
                   }}
                   onStop={() => chat.cancel()}
                 />
@@ -140,7 +149,9 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
             </SheetContent>
           </Sheet>
           <EditProjectDialog project={project}>
-            <Button variant="secondary" size="sm">Edit Project</Button>
+            <Button variant="secondary" size="sm">
+              Edit Project
+            </Button>
           </EditProjectDialog>
           <Button
             variant="outline"
@@ -148,7 +159,7 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
             onClick={async () => {
               const title = window.prompt("Task title?");
               if (!title) return;
-              await createTask.mutateAsync({ title, status: "OPEN", priority: 1 });
+              await createTask.mutateAsync({ title, status: "todo", priority: 1 });
             }}
           >
             <Plus className="h-4 w-4 mr-2" />

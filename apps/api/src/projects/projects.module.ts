@@ -9,9 +9,11 @@ import { EmbeddingsModule } from "../embeddings/embeddings.module";
 import { AgentsModule } from "../agents/agents.module";
 import { LlmModule } from "../llm/openai.module";
 import { PrismaModule } from "../prisma/prisma.module";
+import { AuthModule } from "../auth/auth.module";
+import { TasksModule } from "../tasks/tasks.module";
 
 @Module({
-  imports: [forwardRef(() => EmbeddingsModule), AgentsModule, LlmModule, PrismaModule],
+  imports: [forwardRef(() => EmbeddingsModule), AgentsModule, LlmModule, PrismaModule, AuthModule, TasksModule],
   controllers: [ProjectsController],
   providers: [ProjectsService, ProjectNotesService, ProjectTasksService, ProjectChatService, ProjectDetailsService],
 })

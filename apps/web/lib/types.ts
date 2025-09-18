@@ -1,59 +1,59 @@
-export type ProjectStatus = "ACTIVE" | "ON_HOLD" | "AT_RISK" | "ARCHIVED"
-export type TaskStatus = "OPEN" | "IN_PROGRESS" | "BLOCKED" | "DONE"
+export type ProjectStatus = "ACTIVE" | "ON_HOLD" | "AT_RISK" | "ARCHIVED";
+export type TaskStatus = "todo" | "in_progress" | "done";
 
 export interface Person {
-  id: string
-  name: string
-  email?: string
-  role?: string
+  id: string;
+  name: string;
+  email?: string;
+  role?: string;
 }
 
 export interface Project {
-  id: string
-  name: string
-  code: string // short handle e.g., 'VAS'
-  description?: string | null
-  status: ProjectStatus
-  riskScore: number // 0-100
-  owner?: Person
-  openTasks?: number
-  nextDueDate?: string | null
-  updatedAt: string
+  id: string;
+  name: string;
+  code: string; // short handle e.g., 'VAS'
+  description?: string | null;
+  status: ProjectStatus;
+  riskScore: number; // 0-100
+  owner?: Person;
+  openTasks?: number;
+  nextDueDate?: string | null;
+  updatedAt: string;
 }
 
 export interface Task {
-  id: string
-  projectCode?: string
-  title: string
-  status: TaskStatus
-  dueDate?: string | null
-  priority: number // 0-3
-  source?: "MANUAL" | "EMAIL" | "MEETING"
-  updatedAt: string
+  id: string;
+  projectCode?: string;
+  title: string;
+  status: TaskStatus;
+  dueDate?: string | null;
+  priority: number; // 0-3
+  source?: "MANUAL" | "EMAIL" | "MEETING";
+  updatedAt: string;
 }
 
 export interface Meeting {
-  id: string
-  projectCode?: string
-  title: string
-  startsAt: string
-  endsAt?: string | null
-  attendees?: Array<{ name?: string; email?: string }>
-  googleEventId?: string
+  id: string;
+  projectCode?: string;
+  title: string;
+  startsAt: string;
+  endsAt?: string | null;
+  attendees?: Array<{ name?: string; email?: string }>;
+  googleEventId?: string;
 }
 
 export interface Note {
-  id: string
-  projectCode?: string
-  meetingId?: string
-  authorEmail?: string
-  content: string
-  tags: string[]
-  createdAt: string
+  id: string;
+  projectCode?: string;
+  meetingId?: string;
+  authorEmail?: string;
+  content: string;
+  tags: string[];
+  createdAt: string;
 }
 
 export interface Digest {
-  id: string
-  createdAt: string
-  markdown: string // rendered into the dashboard preview
+  id: string;
+  createdAt: string;
+  markdown: string; // rendered into the dashboard preview
 }

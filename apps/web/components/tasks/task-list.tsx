@@ -10,11 +10,10 @@ import { useUpdateTask } from "@/api/hooks"
 import { useToast } from "@/hooks/use-toast"
 import type { Task, TaskStatus } from "@/lib/types"
 
-const statusColors = {
-  OPEN: "bg-gray-500",
-  IN_PROGRESS: "bg-blue-500",
-  BLOCKED: "bg-red-500",
-  DONE: "bg-green-500",
+const statusColors: Record<TaskStatus, string> = {
+  todo: "bg-gray-500",
+  in_progress: "bg-blue-500",
+  done: "bg-green-500",
 }
 
 const priorityColors = {
@@ -67,7 +66,7 @@ export function TaskList({ tasks }: TaskListProps) {
     <div className="space-y-3">
       {sortedTasks.map((task) => {
         const isOverdue =
-          task.dueDate && isPast(new Date(task.dueDate)) && !isToday(new Date(task.dueDate)) && task.status !== "DONE"
+          task.dueDate && isPast(new Date(task.dueDate)) && !isToday(new Date(task.dueDate)) && task.status !== "done"
 
         return (
           <Card key={task.id} className="hover:shadow-md transition-shadow">
@@ -108,18 +107,14 @@ export function TaskList({ tasks }: TaskListProps) {
 
                 <div className="flex items-center gap-2">
                   <div className="text-xs text-muted-foreground">Priority {task.priority}</div>
-                  <Select
-                    value={task.status}
-                    onValueChange={(value) => handleStatusChange(task.id, value as TaskStatus)}
-                  >
+                  <Select value={task.status} onValueChange={(value) => handleStatusChange(task.id, value as TaskStatus)}>
                     <SelectTrigger className="w-32">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="OPEN">Open</SelectItem>
-                      <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-                      <SelectItem value="BLOCKED">Blocked</SelectItem>
-                      <SelectItem value="DONE">Done</SelectItem>
+                      <SelectItem value="todo">Open</SelectItem>
+                      <SelectItem value="in_progress">In Progress</SelectItem>
+                      <SelectItem value="done">Done</SelectItem>
                     </SelectContent>
                   </Select>
                   <Button variant="ghost" size="sm">

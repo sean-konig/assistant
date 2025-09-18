@@ -37,7 +37,7 @@ export class ItemsService {
     const id = params.id ?? (await this.genId())
     const now = params.createdAt ?? new Date()
     await this.prisma.$executeRawUnsafe(
-      'INSERT INTO items (id,"userId","projectId",type,title,body,raw,"occurredAt","createdAt","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9)',
+      'INSERT INTO items (id,"userId","projectId",type,title,body,raw,"occurredAt","createdAt","updatedAt") VALUES ($1,$2,$3,$4::"ItemType",$5,$6,$7,$8,$9,$9)',
       id,
       params.userId,
       params.projectId ?? null,
