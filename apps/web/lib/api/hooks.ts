@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { ProjectsApi } from "./projects";
+import { IngestApi, type IngestManualReq, type IngestManualRes } from "./ingest";
 import { TasksApi, TasksFilter, TaskResponse } from "./tasks";
 import type { CreateProjectReq, UpdateProjectReq } from "@repo/types";
 import type { Project as UiProject, Task, Meeting, Note, TaskStatus } from "@/lib/types";
@@ -226,6 +227,12 @@ export function useProjectChatStream(code: string) {
   }
 
   return { send, cancel, isStreaming, reply, error };
+}
+
+export function useManualIngest() {
+  return useMutation<IngestManualRes, Error, IngestManualReq>({
+    mutationFn: (payload: IngestManualReq) => IngestApi.manual(payload),
+  });
 }
 export function useCoreChatStream() {
   const [isStreaming, setStreaming] = useState(false);

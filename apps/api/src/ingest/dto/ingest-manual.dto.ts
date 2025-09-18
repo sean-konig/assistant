@@ -1,36 +1,35 @@
-import { IsArray, IsDateString, IsIn, IsOptional, IsString, MaxLength, MinLength } from "class-validator";
+import { IsDateString, IsIn, IsObject, IsOptional, IsString, MaxLength } from "class-validator";
 
 export class IngestManualDto {
+  @IsString()
+  projectId!: string;
+
+  @IsIn(["NOTE", "TASK", "DOC"])
+  kind!: "NOTE" | "TASK" | "DOC";
+
   @IsOptional()
   @IsString()
-  projectCode?: string;
-
-  @IsIn(["note", "meeting", "action_items"])
-  kind!: "note" | "meeting" | "action_items";
-
-  @IsOptional()
-  @IsString()
+  @MaxLength(512)
   title?: string;
 
+  @IsOptional()
   @IsString()
-  @MinLength(2)
-  @MaxLength(10000)
-  raw_text!: string;
+  body?: string;
+
+  @IsOptional()
+  @IsObject()
+  raw?: Record<string, any>;
 
   @IsOptional()
   @IsDateString()
-  occurred_at?: string;
-
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  tags?: string[];
+  occurredAt?: string;
 }
 
 export interface IngestManualResponseDto {
-  itemId: string;
+  id: string;
 }
 
+// Interface used by internal processor/worker if needed
 export interface IngestJobDetails {
   itemId: string;
   userId: string;

@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
 import { ProjectOverview } from "@/components/projects/project-overview";
 import { EditProjectDialog } from "@/components/projects/edit-project-dialog";
@@ -22,6 +23,8 @@ import { ProjectMeetings } from "@/components/projects/project-meetings";
 import { ProjectNotes } from "@/components/projects/project-notes";
 import { ChatPanel, type ChatMessage } from "@/components/chat/chat-panel";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { useManualIngest } from "@/lib/api/hooks";
+import { useToast } from "@/components/ui/use-toast";
 
 const statusColors = {
   ACTIVE: "bg-green-500",
@@ -40,10 +43,18 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
   const createNote = useCreateNote(code);
   const createTask = useCreateTask(code);
   const chat = useProjectChatStream(code);
+  const manualIngest = useManualIngest();
+  const { toast } = useToast();
   const [noteOpen, setNoteOpen] = useState(false);
   const [md, setMd] = useState("");
   const [summary, setSummary] = useState("");
   const [noteType, setNoteType] = useState("GENERAL");
+  const [ingestOpen, setIngestOpen] = useState(false);
+  const [ingestKind, setIngestKind] = useState<"NOTE" | "TASK" | "DOC">("NOTE");
+  const [ingestTitle, setIngestTitle] = useState("");
+  const [ingestBody, setIngestBody] = useState("");
+  const [ingestRaw, setIngestRaw] = useState("");
+  const [ingestOccurredAt, setIngestOccurredAt] = useState<string>("");
   const [messages, setMessages] = useState<
     Array<{ id?: string; role: "user" | "assistant"; content: string; createdAt?: string }>
   >([]);
@@ -228,6 +239,99 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
                     }}
                   >
                     Save Note
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={ingestOpen} onOpenChange={setIngestOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Plus className="h-4 w-4 mr-2" />
+                Manual Ingest
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[700px]">
+              <DialogHeader>
+                <DialogTitle>Manual Ingestion</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label>Kind</Label>
+                    <Select value={ingestKind} onValueChange={(v) => setIngestKind(v as any)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select kind" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="NOTE">NOTE</SelectItem>
+                        <SelectItem value="TASK">TASK</SelectItem>
+                        <SelectItem value="DOC">DOC</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Occurred At</Label>
+                    <Input
+                      type="datetime-local"
+                      value={ingestOccurredAt}
+                      onChange={(e) => setIngestOccurredAt(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label>Title (optional)</Label>
+                  <Input value={ingestTitle} onChange={(e) => setIngestTitle(e.target.value)} placeholder="Title" />
+                </div>
+                <div className="space-y-1">
+                  <Label>Body (plain text)</Label>
+                  <Textarea
+                    rows={8}
+                    value={ingestBody}
+                    onChange={(e) => setIngestBody(e.target.value)}
+                    placeholder="Plain text body (preferred)"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Raw JSON (optional)</Label>
+                  <Textarea
+                    rows={6}
+                    value={ingestRaw}
+                    onChange={(e) => setIngestRaw(e.target.value)}
+                    placeholder='{"markdown":"# ...","status":"TODO","dueDate":"2025-09-22"}'
+                  />
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setIngestOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    disabled={manualIngest.isPending}
+                    onClick={async () => {
+                      try {
+                        const raw = ingestRaw.trim() ? JSON.parse(ingestRaw) : undefined;
+                        const occurredAtIso = ingestOccurredAt ? new Date(ingestOccurredAt).toISOString() : undefined;
+                        const res = await manualIngest.mutateAsync({
+                          projectId: project.id,
+                          kind: ingestKind,
+                          title: ingestTitle || undefined,
+                          body: ingestBody || undefined,
+                          raw,
+                          occurredAt: occurredAtIso,
+                        });
+                        toast({ title: 'Ingest queued', description: `Item ${res.id} created` });
+                        setIngestTitle("");
+                        setIngestBody("");
+                        setIngestRaw("");
+                        setIngestOccurredAt("");
+                        setIngestOpen(false);
+                      } catch (e: any) {
+                        toast({ title: 'Ingest failed', description: e?.message ?? 'Unknown error' });
+                      }
+                    }}
+                  >
+                    {manualIngest.isPending ? 'Ingesting…' : 'Ingest'}
                   </Button>
                 </div>
               </div>

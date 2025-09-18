@@ -1,16 +1,19 @@
-import { Body, Controller, Post, UseGuards } from "@nestjs/common";
-import { SupabaseJwtGuard } from "../common/guards/supabase-jwt.guard";
-import { GetUser } from "../common/decorators/get-user.decorator";
+import { Body, Controller, HttpCode, Inject, InternalServerErrorException, Post } from "@nestjs/common";
+import { ApiTags } from "@nestjs/swagger";
 import { IngestService } from "./ingest.service";
 import { IngestManualDto, IngestManualResponseDto } from "./dto/ingest-manual.dto";
 
+@ApiTags("ingest")
 @Controller("ingest")
-// @UseGuards(SupabaseJwtGuard)  // Temporarily disabled for testing
 export class IngestController {
-  constructor(private readonly ingestService: IngestService) {}
+  constructor(@Inject(IngestService) private readonly ingestService: IngestService) {}
 
   @Post("manual")
+  @HttpCode(200)
   async ingestManual(@Body() dto: IngestManualDto): Promise<IngestManualResponseDto> {
-    return this.ingestService.ingestManual("seankonig", dto);
+    if (!this.ingestService) {
+      throw new InternalServerErrorException("IngestService unavailable");
+    }
+    return this.ingestService.ingestManual(dto);
   }
 }
