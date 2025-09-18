@@ -1,6 +1,6 @@
 # Prisma + Supabase migrations
 
-We use Prisma Migrate against Supabase Postgres. The schema defines `Embedding.vector` as `Unsupported("vector(768)")` and the initial migration enables the `pgvector` extension and creates a `vector(768)` column.
+We use Prisma Migrate against Supabase Postgres. The schema defines `Embedding.vector` as `Unsupported("vector(1536)")` and the initial migration enables the `pgvector` extension and creates the vector column.
 
 ## Environment
 
@@ -29,3 +29,4 @@ DIRECT_URL=postgresql://postgres:<PASSWORD>@db.<PROJECT_REF>.supabase.co:5432/po
 
 - Supabase DB must have the `vector` extension available (enabled by the initial migration).
 - If you get P1001 connection errors, verify DIRECT_URL host is db.<PROJECT_REF>.supabase.co and sslmode=require is set.
+ - Embedding dimensions use OpenAI `text-embedding-3-small` (1536-d). Ensure the `embeddings.vector` column is `vector(1536)` and the `embeddings.dim` default is `1536`.

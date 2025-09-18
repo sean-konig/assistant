@@ -10,7 +10,7 @@ This repo implements a small set of “agents” that operate over user data via
 - Auth: Supabase-style JWT guard (`SupabaseJwtGuard`) protecting agent endpoints
 - Models: Users, Projects, Sources, Items, Embeddings, RiskScores, Digests, Reminders, JobRuns
 
-Database schema lives in `apps/api/prisma/schema.prisma`. pgvector is required and enabled by the first migration. Embeddings are stored as Postgres `vector(768)` using a raw SQL insert to ensure the column type is honored.
+Database schema lives in `apps/api/prisma/schema.prisma`. pgvector is required and enabled by the first migration. Embeddings are stored as Postgres `vector(1536)` using a raw SQL insert to ensure the column type is honored.
 
 ## Existing agents
 
@@ -20,7 +20,7 @@ Database schema lives in `apps/api/prisma/schema.prisma`. pgvector is required a
 - Endpoint: `POST /embeddings/index` (JWT required)
 - Purpose: Store a user‑scoped vector embedding, optionally linked to an `Item`
 - Service method: `EmbeddingsService.indexVector(userId, itemId, vector, dim)`
-- Storage: Inserts into `Embedding` with `vector` as `vector(768)` (or provided dim)
+- Storage: Inserts into `Embedding` with `vector` as `vector(1536)` (or provided dim)
 
 Request body example:
 
@@ -28,7 +28,7 @@ Request body example:
 {
   "itemId": "<optional item id>",
   "vector": [0.01, -0.12, ...],
-  "dim": 768
+  "dim": 1536
 }
 ```
 
@@ -90,7 +90,7 @@ Key tables (see `schema.prisma`):
 
 - `users` — user registry (mirrors Supabase auth IDs)
 - `projects`, `sources`, `items` — content graph
-- `embeddings` — vector store: `vector(768)` column with dimension `dim`
+- `embeddings` — vector store: `vector(1536)` column with dimension `dim`
 - `digests` — daily summaries
 - `job_runs` — simple job queue audit
 

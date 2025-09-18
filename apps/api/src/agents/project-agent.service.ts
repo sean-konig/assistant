@@ -125,10 +125,10 @@ export class ProjectAgentService {
       console.log(`[RAG] 🔍 Executing similarity search...`);
 
       const rows = await this.prisma.$queryRawUnsafe<any[]>(
-        `SELECT i.title, i.body, i.raw, e.vector <-> $2::vector as distance
+        `SELECT i.id, i.title, i.body, i.raw, e.vector <-> $2::vector as distance
          FROM embeddings e
          JOIN items i ON i.id = e."itemId"
-         WHERE e."projectId" = $1
+         WHERE i."projectId" = $1
          ORDER BY e.vector <-> $2::vector
          LIMIT ${k}`,
         projectId,
