@@ -3,7 +3,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { FileText, Copy, Download } from "lucide-react"
-import { useLatestDigest } from "@/api/hooks"
+import { useLatestDigest } from "@/lib/api/hooks"
 import { format } from "date-fns"
 import { useToast } from "@/hooks/use-toast"
 

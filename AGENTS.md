@@ -59,9 +59,31 @@ Response: Newly created `Digest` row
 
 Notes:
 
-- Current implementation is simple and not LLM‑powered. It aggregates today’s items and writes a placeholder summary. You can wire an LLM later and store provenance in `Digest` or a related table.
+- Legacy endpoint kept for manual testing; the global agent now powers the primary digest via `/agent/global/digest`.
+- Persisted digests can be retrieved with `GET /digests/latest`, which returns the structured payload used by the dashboard.
 
-### 3) Job queue (lightweight)
+### 3) Global dashboard agent
+
+- Module: `apps/api/src/agents/global`
+- Streaming endpoint: `GET /agent/global/chat/stream` (JWT required)
+- Digest endpoint: `GET /agent/global/digest?date=YYYY-MM-DD&persist=true|false`
+- Purpose: Aggregate context across all projects to produce a daily digest and answer dashboard prompts
+- System: Guardrailed agent calling tools (`fetch_global_context`, `create_task`, `add_note`, `set_reminder`)
+- Storage: Persisted digests via `DigestsService.saveGlobalDigest` and retrieved through `GET /digests/latest`
+
+Key behaviors:
+
+- Input/output guardrails enforce scope, section formatting, and machine-tail actions
+- Retrieval bundles tasks, meetings, risks, and vector snippets with distance filtering (`<= 0.6`)
+- Structured logs prefixed with `[GLOBAL:INPUT]`, `[GLOBAL:CTX]`, `[GLOBAL:OUTPUT]`, `[GLOBAL:ACTIONS]`, `[GLOBAL:DIGEST]` aid debugging
+- Optional scheduler helper (`GlobalDigestScheduler`) can be invoked by cron jobs to render and persist the 06:00 digest
+
+Response shape (digest):
+
+- Markdown digest with required sections (`## Today’s Overview`, `## Top Priorities (Next Steps)`, `## Meetings`, `## Tasks`, optional risk section, `## Quick actions`)
+- Machine tail JSON surfaces `intent`, `references`, `proposed_tasks`, `followups`, `actions` for UI buttons
+
+### 4) Job queue (lightweight)
 
 - Module: `apps/api/src/jobs`
 - Endpoint: `POST /jobs/queue` (JWT required)

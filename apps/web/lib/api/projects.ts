@@ -11,6 +11,29 @@ export type ProjectDetails = UiProject & {
   chat: { id: string; role: 'assistant' | 'user'; content: string; createdAt: string }[];
 };
 
+export interface ProjectChatResponse {
+  reply: string;
+  intent?: string;
+  references?: Array<{ itemId: string; kind?: string | null; title?: string | null; distance?: number }>;
+  proposedTasks?: Array<{
+    title: string;
+    status: 'TODO';
+    dueDate?: string | null;
+    projectId: string;
+    note?: string | null;
+  }>;
+  proposedNotes?: Array<{
+    body: string;
+    projectId: string;
+    title?: string | null;
+    tags?: string[];
+  }>;
+  guardrails?: {
+    input: { tripwire: boolean; message: string; rewritten?: string; intent?: string };
+    output?: { tripwire: boolean; message?: string; patched?: string };
+  };
+}
+
 export const ProjectsApi = {
   list: async () => (await api.get<ListProjectsRes>('/projects')).data,
   create: async (payload: CreateProjectReq) => (await api.post<CreateProjectRes>('/projects', payload)).data,
@@ -25,5 +48,6 @@ export const ProjectsApi = {
     code: string,
     payload: { title: string; status: 'OPEN' | 'IN_PROGRESS' | 'BLOCKED' | 'DONE'; priority: number; dueDate?: string | null; source?: 'MANUAL' | 'EMAIL' | 'MEETING' },
   ) => (await api.post<Task>(`/projects/${code}/tasks`, payload)).data,
-  chat: async (code: string, message: string) => (await api.post<{ reply: string }>(`/projects/${code}/chat`, { message })).data,
+  chat: async (code: string, message: string) =>
+    (await api.post<ProjectChatResponse>(`/projects/${code}/chat`, { message })).data,
 };

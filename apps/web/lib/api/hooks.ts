@@ -8,6 +8,68 @@ import { TasksApi, TasksFilter, TaskResponse } from "./tasks";
 import type { CreateProjectReq, UpdateProjectReq } from "@repo/types";
 import type { Project as UiProject, Task, Meeting, Note, TaskStatus } from "@/lib/types";
 
+export interface AgentReference {
+  itemId: string;
+  kind?: string | null;
+  title?: string | null;
+  distance?: number;
+}
+
+export interface AgentProposedTask {
+  title: string;
+  status: "TODO";
+  dueDate?: string | null;
+  projectId: string;
+  note?: string | null;
+}
+
+export interface AgentProposedNote {
+  body: string;
+  projectId: string;
+  title?: string | null;
+  tags?: string[];
+}
+
+export interface AgentProposedReminder {
+  content: string;
+  dueAt: string;
+}
+
+export interface AgentProposedAction {
+  kind: "create_task" | "add_note" | "set_reminder";
+  args: any;
+}
+
+export interface AgentGuardrailInputDecision {
+  tripwire: boolean;
+  message: string;
+  rewritten?: string;
+  intent?: string;
+}
+
+export interface AgentGuardrailOutputDecision {
+  tripwire: boolean;
+  message?: string;
+  patched?: string;
+}
+
+export interface AgentGuardrailBundle {
+  input: AgentGuardrailInputDecision;
+  output?: AgentGuardrailOutputDecision;
+}
+
+export interface ChatStreamMetadata {
+  reply: string;
+  intent?: string;
+  references: AgentReference[];
+  proposedTasks: AgentProposedTask[];
+  proposedNotes: AgentProposedNote[];
+  proposedReminders?: AgentProposedReminder[];
+  actions?: AgentProposedAction[];
+  guardrails?: AgentGuardrailBundle;
+  version: number;
+}
+
 export function useProjects() {
   return useQuery({
     queryKey: ["projects"],
@@ -67,6 +129,7 @@ export function useCreateNote(code: string) {
       summaryMarkdown?: string;
       tags?: string[];
       authorEmail?: string;
+      noteType?: string;
       vector?: number[];
       dim?: number;
     }) => ProjectsApi.addNote(code, payload),
@@ -151,6 +214,7 @@ export function useProjectChatStream(code: string) {
   const [isStreaming, setStreaming] = useState(false);
   const [reply, setReply] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [metadata, setMetadata] = useState<ChatStreamMetadata | null>(null);
   const esRef = useRef<EventSource | null>(null);
 
   useEffect(
@@ -164,6 +228,7 @@ export function useProjectChatStream(code: string) {
     setError(null);
     setReply("");
     setStreaming(true);
+    setMetadata(null);
 
     // Wrap the stream lifecycle in a Promise so callers can await the final text.
     return new Promise<string>((resolve) => {
@@ -187,6 +252,24 @@ export function useProjectChatStream(code: string) {
               const t = String(data.token);
               setReply((r) => r + t);
               full += t;
+            }
+            if (data.final) {
+              const final = data.final as Partial<ChatStreamMetadata> & { reply?: string };
+              setMetadata({
+                reply: typeof final.reply === "string" ? final.reply : full,
+                intent: typeof final.intent === "string" ? final.intent : undefined,
+                references: Array.isArray(final.references) ? (final.references as AgentReference[]) : [],
+                proposedTasks: Array.isArray(final.proposedTasks) ? (final.proposedTasks as AgentProposedTask[]) : [],
+                proposedNotes: Array.isArray(final.proposedNotes) ? (final.proposedNotes as AgentProposedNote[]) : [],
+                proposedReminders: Array.isArray((final as any).proposedReminders)
+                  ? ((final as any).proposedReminders as AgentProposedReminder[])
+                  : undefined,
+                actions: Array.isArray((final as any).actions)
+                  ? ((final as any).actions as AgentProposedAction[])
+                  : undefined,
+                guardrails: final.guardrails as AgentGuardrailBundle | undefined,
+                version: Date.now(),
+              });
             }
             if (data.done || data.error) {
               es.close();
@@ -226,12 +309,57 @@ export function useProjectChatStream(code: string) {
     setStreaming(false);
   }
 
-  return { send, cancel, isStreaming, reply, error };
+  function clearMetadata() {
+    setMetadata(null);
+  }
+
+  return { send, cancel, isStreaming, reply, error, metadata, clearMetadata };
 }
+
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3002";
+
+export const GlobalAgentApi = {
+  async digest(date?: string) {
+    const params = new URLSearchParams({ persist: 'false' });
+    if (date) params.set('date', date);
+    const res = await fetch(`${API_BASE}/agent/global/digest?${params.toString()}`, {
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      throw new Error('failed to fetch global digest');
+    }
+    return res.json();
+  },
+};
+
+export const GlobalDigestsApi = {
+  async latest() {
+    const res = await fetch(`${API_BASE}/digests/latest`, { credentials: 'include' });
+    if (!res.ok) {
+      throw new Error('failed to load latest digest');
+    }
+    return res.json();
+  },
+};
 
 export function useManualIngest() {
   return useMutation<IngestManualRes, Error, IngestManualReq>({
     mutationFn: (payload: IngestManualReq) => IngestApi.manual(payload),
+  });
+}
+
+export function useGlobalDigest(date?: string) {
+  return useQuery({
+    queryKey: ['global-digest', date ?? 'today'],
+    queryFn: () => GlobalAgentApi.digest(date),
+  });
+}
+
+export function useLatestDigest() {
+  return useQuery({
+    queryKey: ['digests', 'latest'],
+    queryFn: GlobalDigestsApi.latest,
   });
 }
 export function useCoreChatStream() {
@@ -286,6 +414,100 @@ export function useCoreChatStream() {
   }
 
   return { send, cancel, isStreaming, reply, error };
+}
+
+export function useGlobalChatStream() {
+  const [isStreaming, setStreaming] = useState(false);
+  const [reply, setReply] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [metadata, setMetadata] = useState<ChatStreamMetadata | null>(null);
+  const esRef = useRef<EventSource | null>(null);
+
+  useEffect(
+    () => () => {
+      esRef.current?.close();
+    },
+    []
+  );
+
+  async function send(message: string) {
+    setError(null);
+    setReply("");
+    setMetadata(null);
+    setStreaming(true);
+    try {
+      const params = new URLSearchParams({ message, t: Date.now().toString() });
+      const url = `${API_BASE}/agent/global/chat/stream?${params.toString()}`;
+      esRef.current?.close();
+      const es = new EventSource(url);
+      esRef.current = es;
+      let full = "";
+      es.onmessage = (evt) => {
+        try {
+          const data = JSON.parse(evt.data);
+          if (data.token) {
+            const token = String(data.token);
+            full += token;
+            setReply((current) => current + token);
+          }
+          if (data.final) {
+            const final = data.final as Partial<ChatStreamMetadata> & { reply?: string };
+            setMetadata({
+              reply: typeof final.reply === "string" ? final.reply : full,
+              intent: typeof final.intent === "string" ? final.intent : undefined,
+              references: Array.isArray(final.references) ? (final.references as AgentReference[]) : [],
+              proposedTasks: Array.isArray(final.proposedTasks) ? (final.proposedTasks as AgentProposedTask[]) : [],
+              proposedNotes: Array.isArray(final.proposedNotes) ? (final.proposedNotes as AgentProposedNote[]) : [],
+              proposedReminders: Array.isArray((final as any).proposedReminders)
+                ? ((final as any).proposedReminders as AgentProposedReminder[])
+                : undefined,
+              actions: Array.isArray((final as any).actions)
+                ? ((final as any).actions as AgentProposedAction[])
+                : undefined,
+              guardrails: final.guardrails as AgentGuardrailBundle | undefined,
+              version: Date.now(),
+            });
+          }
+          if (Array.isArray(data.refs)) {
+            setMetadata((prev) => {
+              if (!prev) return prev;
+              return { ...prev, references: data.refs as AgentReference[], version: Date.now() } as ChatStreamMetadata;
+            });
+          }
+          if (data.done || data.error) {
+            es.close();
+            esRef.current = null;
+            setStreaming(false);
+            if (data.error) setError(String(data.error));
+          }
+        } catch {
+          // ignore malformed chunk
+        }
+      };
+      es.onerror = () => {
+        setError('stream error');
+        es.close();
+        esRef.current = null;
+        setStreaming(false);
+      };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'failed to start stream';
+      setError(msg);
+      setStreaming(false);
+    }
+  }
+
+  function cancel() {
+    esRef.current?.close();
+    esRef.current = null;
+    setStreaming(false);
+  }
+
+  function clearMetadata() {
+    setMetadata(null);
+  }
+
+  return { send, cancel, isStreaming, reply, error, metadata, clearMetadata };
 }
 
 // Tasks hooks

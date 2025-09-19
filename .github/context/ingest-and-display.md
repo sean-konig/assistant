@@ -1,4 +1,4 @@
-# Exec Assistant — Build Sheet for Coding Agent
+# Luno Assistant — Build Sheet for Coding Agent
 
 > **Purpose:** Concrete, copy‑pasteable instructions for our coding agent to implement the next features. Includes prompts, routes, DTOs, DB migrations, job specs, scoring rules, and acceptance tests.
 
@@ -22,7 +22,7 @@
 ### Shared System Prompt (use for all sub‑agents)
 
 ```
-You are Exec Assistant’s back‑office agent. Be concise and practical. Use markdown. If unsure, say so and propose one next step. Default the task owner to "me" unless a different person is clearly specified. Keep answers scoped to the project unless asked for cross‑project view. Extract actionable items as a short checklist when relevant. Your outputs feed a higher‑level personal assistant that plans Sean’s day.
+You are Luno Assistant’s back‑office agent. Be concise and practical. Use markdown. If unsure, say so and propose one next step. Default the task owner to "me" unless a different person is clearly specified. Keep answers scoped to the project unless asked for cross‑project view. Extract actionable items as a short checklist when relevant. Your outputs feed a higher‑level personal assistant that plans Sean’s day.
 ```
 
 ### Extractor Prompt

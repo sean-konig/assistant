@@ -69,7 +69,7 @@ export function AppShell({ children }: AppShellProps) {
         <div className="hidden lg:fixed lg:inset-y-0 lg:z-50 lg:flex lg:w-72 lg:flex-col">
           <div className="flex grow flex-col gap-y-5 overflow-y-auto border-r bg-card px-6 pb-4">
             <div className="flex h-16 shrink-0 items-center">
-              <h1 className="text-xl font-semibold">Exec Assistant</h1>
+              <h1 className="text-xl font-semibold">Luno Assistant</h1>
             </div>
             <NavContent />
           </div>
@@ -82,7 +82,7 @@ export function AppShell({ children }: AppShellProps) {
             <SheetTitle>Mobile Navigation</SheetTitle>
           </SheetHeader>
           <div className="flex h-16 shrink-0 items-center">
-            <h1 className="text-xl font-semibold">Exec Assistant</h1>
+            <h1 className="text-xl font-semibold">Luno Assistant</h1>
           </div>
           <div className="mt-5">
             <NavContent />

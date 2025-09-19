@@ -5,6 +5,7 @@ function makePrismaMock() {
   return {
     $queryRaw: vi.fn(),
     $executeRawUnsafe: vi.fn(),
+    task: { create: vi.fn() },
   } as any;
 }
 
@@ -23,9 +24,9 @@ describe('ProjectTasksService', () => {
 
   it('create inserts TASK row', async () => {
     prisma.$queryRaw.mockResolvedValueOnce([{ id: 'tid' }]);
-    prisma.$executeRawUnsafe.mockResolvedValueOnce(1);
+    prisma.task.create.mockResolvedValueOnce({ id: 'tid' });
     const res = await svc.create('u1', 'p1', { title: 'T', status: 'OPEN', priority: 1 });
     expect(res.id).toBe('tid');
-    expect(prisma.$executeRawUnsafe).toHaveBeenCalledTimes(1);
+    expect(prisma.task.create).toHaveBeenCalledTimes(1);
   });
 });

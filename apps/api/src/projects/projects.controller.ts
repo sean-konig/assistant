@@ -216,16 +216,53 @@ export class ProjectsController {
       const historyRaw = await this.chatSvc.getRecent(project.id, 9);
       const history = this.clampHistory(historyRaw);
       let full = "";
-      for await (const delta of this.projAgent.replyStreamWithHistory(
+      const iterator = this.projAgent.replyStreamWithHistory(
         { id: project.id, slug: project.slug, description: (project as any).description ?? null },
         message,
         history
-      )) {
-        full += delta;
-        sse.write({ token: delta });
+      )[Symbol.asyncIterator]();
+
+      let done = false;
+      let finalResult: any;
+      while (!done) {
+        const { value, done: iterDone } = await iterator.next();
+        if (iterDone) {
+          done = true;
+          finalResult = value;
+        } else {
+          full += value;
+          sse.write({ token: value });
+        }
       }
 
-      await this.chatSvc.appendMessage(project.userId, project.id, { role: "assistant", content: full });
+      const assistantReply = finalResult?.reply ?? full ?? "";
+      if (!full && assistantReply) {
+        for (const chunk of assistantReply.match(/.{1,120}/g) ?? []) {
+          sse.write({ token: chunk });
+        }
+      }
+
+      await this.chatSvc.appendMessage(project.userId, project.id, {
+        role: "assistant",
+        content: assistantReply,
+      });
+
+      if (finalResult?.references?.length) {
+        sse.write({ refs: finalResult.references });
+      }
+
+      const summary = finalResult
+        ? {
+            reply: assistantReply,
+            intent: finalResult.intent,
+            references: finalResult.references ?? [],
+            proposedTasks: finalResult.proposedTasks ?? [],
+            proposedNotes: finalResult.proposedNotes ?? [],
+            guardrails: finalResult.guardrails,
+          }
+        : { reply: assistantReply };
+      sse.write({ final: summary });
+
       sse.write({ done: true });
     } catch (e: any) {
       sse.write({ error: e?.message || "stream failed" });
@@ -246,16 +283,55 @@ export class ProjectsController {
       const historyRaw = await this.chatSvc.getRecent(project.id, 9);
       const history = this.clampHistory(historyRaw);
       let full = "";
-      for await (const delta of this.projAgent.replyStreamWithHistory(
+      const iterator = this.projAgent.replyStreamWithHistory(
         { id: project.id, slug: project.slug, description: (project as any).description ?? null },
         message,
         history
-      )) {
-        full += delta;
-        sse.write({ token: delta });
+      )[Symbol.asyncIterator]();
+
+      let done = false;
+      let finalResult: any;
+      while (!done) {
+        const { value, done: iterDone } = await iterator.next();
+        if (iterDone) {
+          done = true;
+          finalResult = value;
+        } else {
+          full += value;
+          sse.write({ token: value });
+        }
       }
 
-      await this.chatSvc.appendMessage(project.userId, project.id, { role: "assistant", content: full });
+      const assistantReply = finalResult?.reply ?? full ?? "";
+      if (!full && assistantReply) {
+        for (const chunk of assistantReply.match(/.{1,120}/g) ?? []) {
+          sse.write({ token: chunk });
+        }
+      }
+
+      await this.chatSvc.appendMessage(project.userId, project.id, {
+        role: "assistant",
+        content: assistantReply,
+      });
+
+      if (finalResult?.references?.length) {
+        sse.write({ refs: finalResult.references });
+      }
+
+      {
+        const summary = finalResult
+          ? {
+              reply: assistantReply,
+              intent: finalResult.intent,
+              references: finalResult.references ?? [],
+              proposedTasks: finalResult.proposedTasks ?? [],
+              proposedNotes: finalResult.proposedNotes ?? [],
+              guardrails: finalResult.guardrails,
+            }
+          : { reply: assistantReply };
+        sse.write({ final: summary });
+      }
+
       sse.write({ done: true });
     } catch (e: any) {
       sse.write({ error: e?.message || "stream failed" });
@@ -284,21 +360,22 @@ export class ProjectsController {
 
     console.log(`[RAG-ENDPOINT] 📚 Loaded ${history.length} history messages`);
 
-    // Use RAG streaming method but collect full response
-    let full = "";
-    for await (const delta of this.projAgent.replyStreamWithHistoryAndRag(
+    const result = await this.projAgent.runConversation(
       { id: project.id, slug: project.slug, description: (project as any).description ?? null },
       body.message,
-      history
-    )) {
-      full += delta;
-    }
+      history,
+      { userId: project.userId }
+    );
 
     await this.chatSvc.appendMessage(project.userId, project.id, { role: "user", content: body.message });
-    await this.chatSvc.appendMessage(project.userId, project.id, { role: "assistant", content: full });
-
-    console.log(`[RAG-ENDPOINT] ✅ RAG Chat completed, response length: ${full.length} chars`);
-    return { reply: full };
+    await this.chatSvc.appendMessage(project.userId, project.id, { role: "assistant", content: result.reply });
+    console.log(`[RAG-ENDPOINT] ✅ Guardrailed chat completed, response length: ${result.reply.length} chars`);
+    return {
+      reply: result.reply,
+      intent: result.intent,
+      references: result.references,
+      guardrails: result.guardrails,
+    };
   }
 
   @Get(":code/agent/rag/chat/stream")
@@ -318,26 +395,68 @@ export class ProjectsController {
     const sse = createSse(res, req, { pingMs: 15000 });
     try {
       const project = await this.projects.getLocalBySlug(code);
-      await this.chatSvc.appendMessage(project.userId, project.id, { role: "user", content: message });
 
-      // Load last 9 turns (excluding the one we just saved) to keep total ~10
+      // Load last turns prior to this message so guardrails can consider context
       const historyRaw = await this.chatSvc.getRecent(project.id, 9);
       const history = this.clampHistory(historyRaw);
 
-      console.log(`[RAG-STREAM] 📚 Loaded ${history.length} history messages, starting RAG stream...`);
+      console.log(`[RAG-STREAM] 📚 Loaded ${history.length} history messages, starting guardrailed stream...`);
 
       let full = "";
-      for await (const delta of this.projAgent.replyStreamWithHistoryAndRag(
-        { id: project.id, slug: project.slug, description: (project as any).description ?? null },
-        message,
-        history
-      )) {
-        full += delta;
-        sse.write({ token: delta });
+      const iterator = this.projAgent
+        .streamConversation(
+          { id: project.id, slug: project.slug, description: (project as any).description ?? null },
+          message,
+          history,
+          { userId: project.userId }
+        )
+        [Symbol.asyncIterator]();
+
+      let finalResult: any;
+      let done = false;
+      while (!done) {
+        const { value, done: iterDone } = await iterator.next();
+        if (iterDone) {
+          finalResult = value;
+          done = true;
+        } else {
+          full += value;
+          sse.write({ token: value });
+        }
       }
 
-      await this.chatSvc.appendMessage(project.userId, project.id, { role: "assistant", content: full });
-      console.log(`[RAG-STREAM] ✅ RAG Stream completed, response length: ${full.length} chars`);
+      await this.chatSvc.appendMessage(project.userId, project.id, { role: "user", content: message });
+      const assistantReply = finalResult?.reply ?? full ?? "";
+      if (!full && assistantReply) {
+        for (const chunk of assistantReply.match(/.{1,120}/g) ?? []) {
+          sse.write({ token: chunk });
+        }
+      }
+
+      await this.chatSvc.appendMessage(project.userId, project.id, {
+        role: "assistant",
+        content: assistantReply,
+      });
+
+      if (finalResult?.references?.length) {
+        sse.write({ refs: finalResult.references });
+      }
+
+      {
+        const summary = finalResult
+          ? {
+              reply: assistantReply,
+              intent: finalResult.intent,
+              references: finalResult.references ?? [],
+              proposedTasks: finalResult.proposedTasks ?? [],
+              proposedNotes: finalResult.proposedNotes ?? [],
+              guardrails: finalResult.guardrails,
+            }
+          : { reply: assistantReply };
+        sse.write({ final: summary });
+      }
+
+      console.log(`[RAG-STREAM] ✅ Guardrailed stream completed, response length: ${assistantReply.length} chars`);
       sse.write({ done: true });
     } catch (e: any) {
       console.error(`[RAG-STREAM] ❌ RAG Stream error:`, e);

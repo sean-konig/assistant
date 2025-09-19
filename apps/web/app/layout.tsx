@@ -11,7 +11,7 @@ import { Providers } from "./providers";
 import { Suspense } from "react";
 
 export const metadata: Metadata = {
-  title: "Exec Assistant",
+  title: "Luno Assistant",
   description: "Executive Assistant Dashboard",
   generator: "v0.app",
 };

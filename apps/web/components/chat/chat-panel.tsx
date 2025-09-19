@@ -155,7 +155,7 @@ export function ChatPanel({
         <div className="flex items-end gap-2">
           <div className="flex-1 rounded-2xl border bg-muted/30 ring-1 ring-inset ring-border px-3 py-2 shadow-sm focus-within:ring-2 focus-within:ring-primary/40">
             <textarea
-              className="block w-full bg-transparent border-0 outline-none text-sm resize-none max-h-40 placeholder:text-muted-foreground/70"
+              className="block w-full bg-transparent border-0 outline-none text-sm resize-none mix-h-80 placeholder:text-muted-foreground/70"
               rows={1}
               placeholder="Type your message..."
               value={input}

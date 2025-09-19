@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useRef, useState } from "react";
+import { use, useEffect, useState } from "react";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,8 +8,15 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
-import { Calendar, FileText, CheckSquare, TrendingUp, Plus } from "lucide-react";
-import { useProject, useCreateNote, useCreateTask, useProjectChatStream } from "@/lib/api/hooks";
+import { Calendar, FileText, CheckSquare, TrendingUp, Plus, Loader2 } from "lucide-react";
+import {
+  useProject,
+  useCreateNote,
+  useCreateTask,
+  useProjectChatStream,
+  type AgentProposedTask,
+  type AgentProposedNote,
+} from "@/lib/api/hooks";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -45,10 +52,10 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
   const chat = useProjectChatStream(code);
   const manualIngest = useManualIngest();
   const { toast } = useToast();
-  const [noteOpen, setNoteOpen] = useState(false);
-  const [md, setMd] = useState("");
-  const [summary, setSummary] = useState("");
-  const [noteType, setNoteType] = useState("GENERAL");
+  // const [noteOpen, setNoteOpen] = useState(false);
+  // const [md, setMd] = useState("");
+  // const [summary, setSummary] = useState("");
+  // const [noteType, setNoteType] = useState("GENERAL");
   const [ingestOpen, setIngestOpen] = useState(false);
   const [ingestKind, setIngestKind] = useState<"NOTE" | "TASK" | "DOC">("NOTE");
   const [ingestTitle, setIngestTitle] = useState("");
@@ -58,7 +65,10 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
   const [messages, setMessages] = useState<
     Array<{ id?: string; role: "user" | "assistant"; content: string; createdAt?: string }>
   >([]);
-  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [pendingTasks, setPendingTasks] = useState<AgentProposedTask[]>([]);
+  const [pendingNotes, setPendingNotes] = useState<AgentProposedNote[]>([]);
+  const [processingTask, setProcessingTask] = useState<number | null>(null);
+  const [processingNote, setProcessingNote] = useState<number | null>(null);
 
   // Sync server messages into local thread
   useEffect(() => {
@@ -74,10 +84,18 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
     }
   }, [project?.chat]);
 
-  // Auto-scroll on new tokens or message
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages.length, chat.reply]);
+    if (!chat.metadata) {
+      setPendingTasks([]);
+      setPendingNotes([]);
+      return;
+    }
+    setPendingTasks(chat.metadata.proposedTasks ?? []);
+    setPendingNotes(chat.metadata.proposedNotes ?? []);
+  }, [chat.metadata?.version]);
+
+  const references = chat.metadata?.references ?? [];
+  const intent = chat.metadata?.intent;
 
   //const canSend = useMemo(() => !chat.isStreaming, [chat.isStreaming]);
 
@@ -142,8 +160,9 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
               <SheetHeader>
                 <SheetTitle>Project Chat</SheetTitle>
               </SheetHeader>
-              <div className="flex-1 min-h-0 p-2">
+              <div className="flex-1 min-h-0 p-2 flex flex-col gap-4">
                 <ChatPanel
+                  className="flex-1"
                   context={`### ${project.name}\n${project.description ? project.description : "_No description yet._"}`}
                   contextKey={project.code}
                   messages={messages as ChatMessage[]}
@@ -156,6 +175,217 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
                   }}
                   onStop={() => chat.cancel()}
                 />
+                {(pendingTasks.length > 0 || pendingNotes.length > 0 || references.length > 0 || intent) && (
+                  <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Agent Suggestions
+                      </span>
+                      {intent ? (
+                        <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
+                          {intent.replace(/_/g, " ")}
+                        </Badge>
+                      ) : null}
+                    </div>
+                    {references.length > 0 && (
+                      <div className="space-y-2">
+                        <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                          References
+                        </h4>
+                        <ul className="space-y-1">
+                          {references.map((ref) => (
+                            <li key={ref.itemId} className="text-xs text-muted-foreground">
+                              <span className="font-medium text-foreground">{ref.title || ref.itemId.slice(0, 8)}</span>
+                              {ref.kind ? (
+                                <span className="ml-2 rounded-full bg-secondary/60 px-2 py-0.5 text-[10px] uppercase tracking-wide text-secondary-foreground">
+                                  {ref.kind}
+                                </span>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {pendingTasks.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                            Proposed Tasks
+                          </h4>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => setPendingTasks([])}
+                            disabled={processingTask !== null}
+                          >
+                            Dismiss all
+                          </Button>
+                        </div>
+                        <div className="space-y-2">
+                          {pendingTasks.map((task, idx) => {
+                            const dueLabel = (() => {
+                              if (!task.dueDate) return null;
+                              const parsed = new Date(task.dueDate);
+                              if (Number.isNaN(parsed.getTime())) return null;
+                              return format(parsed, "MMM d");
+                            })();
+                            return (
+                              <div
+                                key={`${task.title}-${idx}`}
+                                className="rounded-md border bg-background/60 p-3 space-y-2"
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div>
+                                    <p className="text-sm font-medium text-foreground">{task.title}</p>
+                                    {task.note ? (
+                                      <p className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground">
+                                        {task.note}
+                                      </p>
+                                    ) : null}
+                                  </div>
+                                  {dueLabel ? (
+                                    <Badge variant="secondary" className="text-[11px]">
+                                      Due {dueLabel}
+                                    </Badge>
+                                  ) : null}
+                                </div>
+                                <div className="flex justify-end gap-2">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8"
+                                    onClick={() => setPendingTasks((prev) => prev.filter((_, i) => i !== idx))}
+                                    disabled={processingTask === idx}
+                                  >
+                                    Dismiss
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    className="h-8"
+                                    disabled={processingTask === idx}
+                                    onClick={async () => {
+                                      setProcessingTask(idx);
+                                      try {
+                                        await createTask.mutateAsync({
+                                          title: task.title,
+                                          status: "todo",
+                                          priority: 1,
+                                          dueDate: task.dueDate ?? undefined,
+                                          source: "MANUAL",
+                                        });
+                                        setPendingTasks((prev) => prev.filter((_, i) => i !== idx));
+                                        toast({
+                                          title: "Task created",
+                                          description: `Added \"${task.title}\" to the backlog.`,
+                                        });
+                                      } catch (err: unknown) {
+                                        const message = err instanceof Error ? err.message : "Unable to create task";
+                                        toast({
+                                          title: "Task creation failed",
+                                          description: message,
+                                          variant: "destructive",
+                                        });
+                                      } finally {
+                                        setProcessingTask(null);
+                                      }
+                                    }}
+                                  >
+                                    {processingTask === idx ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add task"}
+                                  </Button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    {pendingNotes.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                            Proposed Notes
+                          </h4>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => setPendingNotes([])}
+                            disabled={processingNote !== null}
+                          >
+                            Dismiss all
+                          </Button>
+                        </div>
+                        <div className="space-y-2">
+                          {pendingNotes.map((note, idx) => (
+                            <div
+                              key={`${note.title ?? note.body.slice(0, 20)}-${idx}`}
+                              className="rounded-md border bg-background/60 p-3 space-y-2"
+                            >
+                              {note.title ? (
+                                <p className="text-sm font-semibold text-foreground">{note.title}</p>
+                              ) : null}
+                              <p className="whitespace-pre-wrap text-xs text-muted-foreground">{note.body}</p>
+                              {note.tags && note.tags.length > 0 ? (
+                                <div className="flex flex-wrap gap-1">
+                                  {note.tags.map((tag) => (
+                                    <Badge
+                                      key={tag}
+                                      variant="secondary"
+                                      className="text-[10px] uppercase tracking-wide"
+                                    >
+                                      {tag}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              ) : null}
+                              <div className="flex justify-end gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8"
+                                  onClick={() => setPendingNotes((prev) => prev.filter((_, i) => i !== idx))}
+                                  disabled={processingNote === idx}
+                                >
+                                  Dismiss
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  className="h-8"
+                                  disabled={processingNote === idx}
+                                  onClick={async () => {
+                                    setProcessingNote(idx);
+                                    try {
+                                      await createNote.mutateAsync({
+                                        markdown: note.body,
+                                        summaryMarkdown: note.title ?? undefined,
+                                        tags: note.tags ?? [],
+                                        noteType: "GENERAL",
+                                      });
+                                      setPendingNotes((prev) => prev.filter((_, i) => i !== idx));
+                                      toast({ title: "Note added", description: "Saved to project notes." });
+                                    } catch (err: unknown) {
+                                      const message = err instanceof Error ? err.message : "Unable to create note";
+                                      toast({
+                                        title: "Note creation failed",
+                                        description: message,
+                                        variant: "destructive",
+                                      });
+                                    } finally {
+                                      setProcessingNote(null);
+                                    }
+                                  }}
+                                >
+                                  {processingNote === idx ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add note"}
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </SheetContent>
           </Sheet>
@@ -164,86 +394,6 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
               Edit Project
             </Button>
           </EditProjectDialog>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={async () => {
-              const title = window.prompt("Task title?");
-              if (!title) return;
-              await createTask.mutateAsync({ title, status: "todo", priority: 1 });
-            }}
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Task
-          </Button>
-          <Dialog open={noteOpen} onOpenChange={setNoteOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Note
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[700px]">
-              <DialogHeader>
-                <DialogTitle>Add Project Note (Markdown)</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-3">
-                <div className="space-y-1">
-                  <Label>Note Type</Label>
-                  <Select value={noteType} onValueChange={setNoteType}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="GENERAL">General</SelectItem>
-                      <SelectItem value="MEETING">Meeting</SelectItem>
-                      <SelectItem value="ONE_ON_ONE">1:1</SelectItem>
-                      <SelectItem value="DAILY">Daily</SelectItem>
-                      <SelectItem value="OTHER">Other</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label>Markdown</Label>
-                  <Textarea
-                    rows={10}
-                    value={md}
-                    onChange={(e) => setMd(e.target.value)}
-                    placeholder="# Title\n\nNotes..."
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label>Summary (optional, Markdown)</Label>
-                  <Textarea
-                    rows={4}
-                    value={summary}
-                    onChange={(e) => setSummary(e.target.value)}
-                    placeholder="- Key point 1\n- Key point 2"
-                  />
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button variant="outline" onClick={() => setNoteOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={async () => {
-                      if (!md.trim()) return;
-                      await createNote.mutateAsync({
-                        markdown: md.trim(),
-                        summaryMarkdown: summary || undefined,
-                        noteType,
-                      });
-                      setMd("");
-                      setSummary("");
-                      setNoteOpen(false);
-                    }}
-                  >
-                    Save Note
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
 
           <Dialog open={ingestOpen} onOpenChange={setIngestOpen}>
             <DialogTrigger asChild>
@@ -320,18 +470,18 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
                           raw,
                           occurredAt: occurredAtIso,
                         });
-                        toast({ title: 'Ingest queued', description: `Item ${res.id} created` });
+                        toast({ title: "Ingest queued", description: `Item ${res.id} created` });
                         setIngestTitle("");
                         setIngestBody("");
                         setIngestRaw("");
                         setIngestOccurredAt("");
                         setIngestOpen(false);
                       } catch (e: any) {
-                        toast({ title: 'Ingest failed', description: e?.message ?? 'Unknown error' });
+                        toast({ title: "Ingest failed", description: e?.message ?? "Unknown error" });
                       }
                     }}
                   >
-                    {manualIngest.isPending ? 'Ingesting…' : 'Ingest'}
+                    {manualIngest.isPending ? "Ingesting…" : "Ingest"}
                   </Button>
                 </div>
               </div>
@@ -362,7 +512,7 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
               <span className="text-sm font-medium">Open Tasks</span>
             </div>
             <div className="text-2xl font-bold mt-2">
-              {project.tasks?.filter((t) => t.status !== "DONE").length || 0}
+              {project.tasks?.filter((t) => t.status !== "done").length || 0}
             </div>
           </CardContent>
         </Card>

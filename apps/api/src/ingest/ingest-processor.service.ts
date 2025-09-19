@@ -188,7 +188,7 @@ export class IngestProcessor {
   }
 
   private async extractTasks(text: string, sourceItemId: string): Promise<ExtractorTaskInput[]> {
-    const systemPrompt = `You are Exec Assistant's back-office agent. Be concise and practical. Use markdown. If unsure, say so and propose one next step. Default the task owner to "me" unless a different person is clearly specified. Keep answers scoped to the project unless asked for cross-project view. Extract actionable items as a short checklist when relevant. Your outputs feed a higher-level personal assistant that plans Sean's day.
+    const systemPrompt = `You are Luno Assistant's back-office agent. Be concise and practical. Use markdown. If unsure, say so and propose one next step. Default the task owner to "me" unless a different person is clearly specified. Keep answers scoped to the project unless asked for cross-project view. Extract actionable items as a short checklist when relevant. Your outputs feed a higher-level personal assistant that plans Sean's day.
 
 Goal: From the provided text, extract tasks as strict JSON using the schema. Default owner to "me" unless another owner is explicit.
 Only output JSON.`;
@@ -262,7 +262,7 @@ Only output JSON.`;
       signals: task.signals,
     }));
 
-    const systemPrompt = `You are Exec Assistant's back-office agent. Be concise and practical. Use markdown. If unsure, say so and propose one next step. Default the task owner to "me" unless a different person is clearly specified. Keep answers scoped to the project unless asked for cross-project view. Extract actionable items as a short checklist when relevant. Your outputs feed a higher-level personal assistant that plans Sean's day.
+    const systemPrompt = `You are Luno Assistant's back-office agent. Be concise and practical. Use markdown. If unsure, say so and propose one next step. Default the task owner to "me" unless a different person is clearly specified. Keep answers scoped to the project unless asked for cross-project view. Extract actionable items as a short checklist when relevant. Your outputs feed a higher-level personal assistant that plans Sean's day.
 
 Goal: Score each task 0–100 using the weights provided in the scoring matrix. Return strict JSON matching the schema. Include a short human explanation.
 Buckets: P0 >= ${this.prioritizationConfig.bucket_thresholds.P0}, P1 ${this.prioritizationConfig.bucket_thresholds.P1}–${this.prioritizationConfig.bucket_thresholds.P0 - 1}, P2 ${this.prioritizationConfig.bucket_thresholds.P2}–${this.prioritizationConfig.bucket_thresholds.P1 - 1}, P3 < ${this.prioritizationConfig.bucket_thresholds.P2}.
@@ -343,7 +343,7 @@ ${JSON.stringify(this.prioritizationConfig, null, 2)}`;
       ? (await this.prisma.project.findUnique({ where: { id: projectId } }))?.slug || "unknown"
       : "global";
 
-    const systemPrompt = `You are Exec Assistant's back-office agent. Be concise and practical. Use markdown. If unsure, say so and propose one next step. Default the task owner to "me" unless a different person is clearly specified. Keep answers scoped to the project unless asked for cross-project view. Extract actionable items as a short checklist when relevant. Your outputs feed a higher-level personal assistant that plans Sean's day.
+    const systemPrompt = `You are Luno Assistant's back-office agent. Be concise and practical. Use markdown. If unsure, say so and propose one next step. Default the task owner to "me" unless a different person is clearly specified. Keep answers scoped to the project unless asked for cross-project view. Extract actionable items as a short checklist when relevant. Your outputs feed a higher-level personal assistant that plans Sean's day.
 
 Goal: Write a daily digest for ${projectCode} in markdown with sections: Top Priorities, Projects at Risk, Key Meetings, Progress Summary. Keep bullets crisp; include dates when known. If there is no data for a section, omit the section.
 Output: plain markdown.`;
